@@ -1,0 +1,157 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: swiftmail-postgres
+    environment:
+      POSTGRES_DB: swiftmail
+      POSTGRES_USER: swiftmail
+      POSTGRES_PASSWORD: swiftmail_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U swiftmail"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: swiftmail-redis
+    ports:
+      - "6379:6379"
+    command: >
+      redis-server
+      --maxmemory 256mb
+      --maxmemory-policy noeviction
+      --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3
+    container_name: swiftmail-clickhouse
+    ports:
+      - "9000:9000"
+      - "8123:8123"
+    volumes:
+      - chdata:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: swiftmail-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9002:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  postfix:
+    image: boky/postfix:latest
+    container_name: swiftmail-postfix
+    ports:
+      - "25:25"
+      - "587:587"
+    environment:
+      # Allow relay from internal network
+      ALLOWED_SENDER_DOMAINS: ""
+      # Allow any sender domain (for multi-tenant)
+      ALLOW_EMPTY_SENDER_DOMAINS: "true"
+      # Hostname
+      HOSTNAME: mail.swiftmail.local
+      # Message size limit (50MB)
+      MESSAGE_SIZE_LIMIT: 52428800
+      # Enable SMTPUTF8 for international emails
+      SMTPUTF8_ENABLE: "yes"
+      # Logging
+      LOG_LEVEL: info
+      # TLS (optional, for production)
+      # TLS_KEY: /etc/postfix/tls/key.pem
+      # TLS_CERT: /etc/postfix/tls/cert.pem
+    volumes:
+      - postfix-spool:/var/spool/postfix
+      - postfix-mail:/var/mail
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "25"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: swiftmail-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    depends_on:
+      - redis
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: swiftmail-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafanadata:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: swiftmail-jaeger
+    ports:
+      - "16686:16686"
+      - "4318:4318"
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+
+  worker:
+    build: ./worker
+    container_name: swiftmail-worker
+    restart: always
+    depends_on:
+      - redis
+      - postgres
+      - clickhouse
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      DB_HOST: postgres
+      DB_PORT: 5432
+      CLICKHOUSE_HOST: clickhouse
+      SMTP_HOST: postfix
+      SMTP_PORT: 25
+      WORKER_CONCURRENCY: 20
+
+volumes:
+  pgdata:
+  chdata:
+  miniodata:
+  grafanadata:
+  postfix-spool:
+  postfix-mail:
