@@ -91,7 +91,7 @@ func getMigrationFiles(direction string) ([]string, error) {
 
 	// Find the migrations directory
 	for _, path := range possiblePaths {
-		pattern := filepath.Join(path, fmt.Sprintf("*_%s.sql", direction))
+		pattern := filepath.Join(path, fmt.Sprintf("*.%s.sql", direction))
 		matches, err := filepath.Glob(pattern)
 		if err == nil && len(matches) > 0 {
 			files = matches
@@ -108,9 +108,9 @@ func getMigrationFiles(direction string) ([]string, error) {
 				if err == nil {
 					migrationsDir = path
 					fmt.Printf("Found migrations directory at: %s\n", path)
-					fmt.Printf("Looking for files ending with: _%s.sql\n", direction)
+					fmt.Printf("Looking for files ending with: .%s.sql\n", direction)
 
-					suffix := fmt.Sprintf("_%s.sql", direction)
+					suffix := fmt.Sprintf(".%s.sql", direction)
 					for _, entry := range entries {
 						fmt.Printf("  Checking: %s (isDir=%v, hasSuffix=%v)\n",
 							entry.Name(), entry.IsDir(), strings.HasSuffix(entry.Name(), suffix))
