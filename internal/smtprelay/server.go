@@ -18,7 +18,7 @@ type Server struct {
 // NewServer creates a new SMTP relay server.
 func NewServer(cfg *config.Config, backend *Backend, logger zerolog.Logger) *Server {
 	s := smtp.NewServer(backend)
-	s.Addr = ":587" // Standard submission port
+	s.Addr = ":2525" // Non-privileged port (use 587 with proper permissions in production)
 	s.Domain = "mail.swiftmail.local"
 	s.ReadTimeout = 10 * time.Second
 	s.WriteTimeout = 10 * time.Second
@@ -42,7 +42,7 @@ func (s *Server) ListenAndServe() error {
 	fmt.Println("╔════════════════════════════════════════════════════════╗")
 	fmt.Println("║       SwiftMail SMTP Relay Server Started             ║")
 	fmt.Println("╠════════════════════════════════════════════════════════╣")
-	fmt.Println("║  Port: 587 (Submission)                                ║")
+	fmt.Println("║  Port: 2525 (Non-privileged)                           ║")
 	fmt.Println("║  Auth: API Key as username                             ║")
 	fmt.Println("║  TLS:  Optional (STARTTLS supported)                   ║")
 	fmt.Println("╚════════════════════════════════════════════════════════╝")
