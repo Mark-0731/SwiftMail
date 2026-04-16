@@ -106,28 +106,19 @@ func getMigrationFiles(direction string) ([]string, error) {
 			if info, err := os.Stat(path); err == nil && info.IsDir() {
 				entries, err := os.ReadDir(path)
 				if err == nil {
-					fmt.Printf("Found migrations directory at: %s\n", path)
-					fmt.Printf("Contents:\n")
-					for _, entry := range entries {
-						fmt.Printf("  - %s\n", entry.Name())
-					}
 					migrationsDir = path
-					break
-				}
-			}
-		}
 
-		if migrationsDir != "" {
-			// Try to read files directly
-			entries, err := os.ReadDir(migrationsDir)
-			if err != nil {
-				return nil, fmt.Errorf("failed to read migrations directory: %w", err)
-			}
+					suffix := fmt.Sprintf("_%s.sql", direction)
+					for _, entry := range entries {
+						if !entry.IsDir() && strings.HasSuffix(entry.Name(), suffix) {
+							files = append(files, filepath.Join(migrationsDir, entry.Name()))
+						}
+					}
 
-			suffix := fmt.Sprintf("_%s.sql", direction)
-			for _, entry := range entries {
-				if !entry.IsDir() && strings.HasSuffix(entry.Name(), suffix) {
-					files = append(files, filepath.Join(migrationsDir, entry.Name()))
+					// If we found files, break
+					if len(files) > 0 {
+						break
+					}
 				}
 			}
 		}
