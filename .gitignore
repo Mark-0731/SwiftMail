@@ -4,10 +4,6 @@
 *.dll
 *.so
 *.dylib
-api
-worker
-smtp
-migrate
 
 # Test binary, built with `go test -c`
 *.test
