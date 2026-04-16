@@ -151,8 +151,14 @@ func (p *Pool) createConnection() (*Connection, error) {
 	}, nil
 }
 
-// Get retrieves a connection from the pool with fast path optimization.
+// Get retrieves a connection from the pool with timeout support.
+// OPTIMIZATION: Wait for available connection instead of failing immediately
 func (p *Pool) Get() (*Connection, error) {
+	return p.GetWithTimeout(context.Background(), 5*time.Second)
+}
+
+// GetWithTimeout retrieves a connection from the pool with configurable timeout.
+func (p *Pool) GetWithTimeout(ctx context.Context, timeout time.Duration) (*Connection, error) {
 	p.mu.RLock()
 	if p.closed {
 		p.mu.RUnlock()
@@ -160,40 +166,53 @@ func (p *Pool) Get() (*Connection, error) {
 	}
 	p.mu.RUnlock()
 
-	// Fast path: try to get an existing connection (non-blocking)
-	select {
-	case conn := <-p.connections:
-		if conn.IsAlive() {
-			atomic.AddInt32(&conn.usedCount, 1)
-			conn.lastUsedAt = time.Now()
-			return conn, nil
-		}
-		// Dead connection, close and create new one
-		conn.Close()
-		atomic.AddInt32(&p.created, -1)
-	default:
-		// No available connections, try to create new one
-	}
+	deadline := time.Now().Add(timeout)
 
-	// Check if we can create a new connection
-	current := atomic.LoadInt32(&p.created)
-	if int(current) < p.maxSize {
-		// Try to increment size atomically
-		if atomic.CompareAndSwapInt32(&p.created, current, current+1) {
-			conn, err := p.factory()
-			if err != nil {
-				atomic.AddInt32(&p.created, -1)
-				return nil, err
+	for {
+		// Fast path: try to get an existing connection (non-blocking)
+		select {
+		case conn := <-p.connections:
+			if conn.IsAlive() {
+				atomic.AddInt32(&conn.usedCount, 1)
+				conn.lastUsedAt = time.Now()
+				return conn, nil
 			}
-			atomic.AddInt32(&conn.usedCount, 1)
-			conn.lastUsedAt = time.Now()
-			return conn, nil
+			// Dead connection, close and create new one
+			conn.Close()
+			atomic.AddInt32(&p.created, -1)
+		default:
+			// No available connections, try to create new one
+		}
+
+		// Check if we can create a new connection
+		current := atomic.LoadInt32(&p.created)
+		if int(current) < p.maxSize {
+			// Try to increment size atomically
+			if atomic.CompareAndSwapInt32(&p.created, current, current+1) {
+				conn, err := p.factory()
+				if err != nil {
+					atomic.AddInt32(&p.created, -1)
+					return nil, err
+				}
+				atomic.AddInt32(&conn.usedCount, 1)
+				conn.lastUsedAt = time.Now()
+				return conn, nil
+			}
+		}
+
+		// Pool is at max capacity, check timeout
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("pool exhausted: %d/%d connections in use (timeout after %v)", current, p.maxSize, timeout)
+		}
+
+		// Wait a bit before retrying (exponential backoff would be better, but this is simpler)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(10 * time.Millisecond):
+			// Retry
 		}
 	}
-
-	// Pool is at max capacity, fail fast instead of waiting
-	// This prevents cascading delays during high load
-	return nil, fmt.Errorf("pool exhausted: %d/%d connections in use", current, p.maxSize)
 }
 
 // Put returns a connection to the pool.

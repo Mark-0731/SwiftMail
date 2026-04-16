@@ -199,8 +199,8 @@ func loadConfig() *Config {
 			Username:       getEnv("SMTP_USERNAME", ""),
 			Password:       getEnv("SMTP_PASSWORD", ""),
 			PoolSize:       getIntEnv("SMTP_POOL_SIZE", 50),
-			MinPoolSize:    getIntEnv("SMTP_MIN_POOL_SIZE", 10),
-			MaxPoolSize:    getIntEnv("SMTP_MAX_POOL_SIZE", 100),
+			MinPoolSize:    getIntEnv("SMTP_MIN_POOL_SIZE", 20),  // Increased from 10
+			MaxPoolSize:    getIntEnv("SMTP_MAX_POOL_SIZE", 500), // Increased from 100
 			ConnectTimeout: getDurationEnv("SMTP_CONNECT_TIMEOUT", 5*time.Second),
 			SendTimeout:    getDurationEnv("SMTP_SEND_TIMEOUT", 15*time.Second),
 			MaxIdleTime:    getDurationEnv("SMTP_MAX_IDLE_TIME", 2*time.Minute),
