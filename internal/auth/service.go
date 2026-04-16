@@ -11,13 +11,13 @@ import (
 )
 
 var (
-	ErrUserExists       = errors.New("user with this email already exists")
+	ErrUserExists         = errors.New("user with this email already exists")
 	ErrInvalidCredentials = errors.New("invalid email or password")
-	ErrUserNotFound     = errors.New("user not found")
-	ErrUserSuspended    = errors.New("account is suspended")
-	ErrTOTPRequired     = errors.New("2FA code required")
-	ErrTOTPInvalid      = errors.New("invalid 2FA code")
-	ErrAPIKeyNotFound   = errors.New("API key not found")
+	ErrUserNotFound       = errors.New("user not found")
+	ErrUserSuspended      = errors.New("account is suspended")
+	ErrTOTPRequired       = errors.New("2FA code required")
+	ErrTOTPInvalid        = errors.New("invalid 2FA code")
+	ErrAPIKeyNotFound     = errors.New("API key not found")
 )
 
 // Service defines the auth business logic interface.
@@ -34,11 +34,11 @@ type Service interface {
 }
 
 type service struct {
-	repo    Repository
-	jwt     *JWTManager
-	totp    *TOTPManager
-	apiKey  *APIKeyManager
-	logger  zerolog.Logger
+	repo   Repository
+	jwt    *JWTManager
+	totp   *TOTPManager
+	apiKey *APIKeyManager
+	logger zerolog.Logger
 }
 
 // NewService creates a new auth service.
@@ -230,6 +230,25 @@ func (s *service) CreateAPIKey(ctx context.Context, userID uuid.UUID, req *Creat
 	key, err := s.repo.CreateAPIKey(ctx, userID, req.Name, keyHash, prefix, req.Permissions, req.ExpiresAt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create API key: %w", err)
+	}
+
+	// Get user to cache role and status
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+
+	// Cache the API key in Redis for fast authentication
+	cacheData := &CachedAPIKeyData{
+		UserID:      userID,
+		Role:        user.Role,
+		Status:      user.Status,
+		RatePerSec:  100, // Default rate limits
+		RatePerDay:  50000,
+		Permissions: req.Permissions,
+	}
+	if err := s.apiKey.CacheAPIKey(ctx, keyHash, cacheData); err != nil {
+		s.logger.Warn().Err(err).Msg("failed to cache API key (will work after first use)")
 	}
 
 	s.logger.Info().Str("user_id", userID.String()).Str("key_prefix", prefix).Msg("API key created")
