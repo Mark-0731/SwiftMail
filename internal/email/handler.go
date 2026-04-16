@@ -43,6 +43,9 @@ func (h *Handler) Send(c *fiber.Ctx) error {
 
 	resp, err := h.service.Send(c.Context(), userID, &req, idempotencyKey)
 	if err != nil {
+		// Log the actual error for debugging
+		c.Locals("error", err.Error())
+
 		errMsg := err.Error()
 		switch {
 		case contains(errMsg, "suppressed"):
@@ -52,7 +55,7 @@ func (h *Handler) Send(c *fiber.Ctx) error {
 		case contains(errMsg, "invalid"):
 			return response.ValidationError(c, errMsg)
 		default:
-			return response.InternalError(c, "Failed to queue email")
+			return response.InternalError(c, "Failed to queue email: "+errMsg)
 		}
 	}
 
