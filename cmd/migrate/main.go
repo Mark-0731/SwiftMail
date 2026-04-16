@@ -36,9 +36,12 @@ func main() {
 	}
 
 	if len(migrations) == 0 {
-		log.Warn().Msg("no migration files found")
+		cwd, _ := os.Getwd()
+		log.Warn().Str("cwd", cwd).Msg("no migration files found")
 		return
 	}
+
+	log.Info().Int("count", len(migrations)).Msg("found migration files")
 
 	// Run migrations in order
 	for _, filename := range migrations {
@@ -69,10 +72,69 @@ func main() {
 
 // getMigrationFiles returns sorted list of migration files for the given direction
 func getMigrationFiles(direction string) ([]string, error) {
-	pattern := fmt.Sprintf("migrations/*_%s.sql", direction)
-	files, err := filepath.Glob(pattern)
+	// Get the current working directory
+	cwd, err := os.Getwd()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get working directory: %w", err)
+	}
+
+	// Try multiple possible paths for migrations directory
+	possiblePaths := []string{
+		filepath.Join(cwd, "migrations"),             // ./migrations
+		filepath.Join(cwd, "..", "migrations"),       // ../migrations
+		filepath.Join(cwd, "..", "..", "migrations"), // ../../migrations
+		"migrations", // relative path
+	}
+
+	var files []string
+	var migrationsDir string
+
+	// Find the migrations directory
+	for _, path := range possiblePaths {
+		pattern := filepath.Join(path, fmt.Sprintf("*_%s.sql", direction))
+		matches, err := filepath.Glob(pattern)
+		if err == nil && len(matches) > 0 {
+			files = matches
+			migrationsDir = path
+			break
+		}
+	}
+
+	if len(files) == 0 {
+		// Last attempt: check if migrations directory exists and list its contents
+		for _, path := range possiblePaths {
+			if info, err := os.Stat(path); err == nil && info.IsDir() {
+				entries, err := os.ReadDir(path)
+				if err == nil {
+					fmt.Printf("Found migrations directory at: %s\n", path)
+					fmt.Printf("Contents:\n")
+					for _, entry := range entries {
+						fmt.Printf("  - %s\n", entry.Name())
+					}
+					migrationsDir = path
+					break
+				}
+			}
+		}
+
+		if migrationsDir != "" {
+			// Try to read files directly
+			entries, err := os.ReadDir(migrationsDir)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read migrations directory: %w", err)
+			}
+
+			suffix := fmt.Sprintf("_%s.sql", direction)
+			for _, entry := range entries {
+				if !entry.IsDir() && strings.HasSuffix(entry.Name(), suffix) {
+					files = append(files, filepath.Join(migrationsDir, entry.Name()))
+				}
+			}
+		}
+	}
+
+	if len(files) == 0 {
+		return nil, fmt.Errorf("no migration files found in any of the expected locations")
 	}
 
 	// Sort files to ensure correct order
