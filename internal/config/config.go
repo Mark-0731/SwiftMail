@@ -287,27 +287,30 @@ func validateProductionSecrets(cfg *Config) {
 		errors = append(errors, "JWT_REFRESH_SECRET is using default value")
 	}
 
-	// Stripe keys must be set
-	if cfg.Stripe.SecretKey == "" {
-		errors = append(errors, "STRIPE_SECRET_KEY is not set")
-	}
-	if cfg.Stripe.WebhookSecret == "" {
-		errors = append(errors, "STRIPE_WEBHOOK_SECRET is not set")
-	}
-
 	// Database password should be set
 	if cfg.Database.Password == "swiftmail_dev" {
 		errors = append(errors, "DB_PASSWORD is using default development value")
 	}
 
-	// MinIO credentials should not be defaults
-	if cfg.MinIO.AccessKey == "minioadmin" || cfg.MinIO.SecretKey == "minioadmin" {
-		errors = append(errors, "MINIO credentials are using default values")
+	// MinIO credentials should not be defaults (only if MinIO endpoint is configured)
+	if cfg.MinIO.Endpoint != "" && cfg.MinIO.Endpoint != "localhost:9002" {
+		if cfg.MinIO.AccessKey == "minioadmin" || cfg.MinIO.SecretKey == "minioadmin" {
+			errors = append(errors, "MINIO credentials are using default values")
+		}
 	}
 
 	if len(errors) > 0 {
 		panic(fmt.Sprintf("Production configuration validation failed:\n- %s",
 			joinStrings(errors, "\n- ")))
+	}
+
+	// Warnings for optional services
+	warnings := []string{}
+	if cfg.Stripe.SecretKey == "" || cfg.Stripe.SecretKey == "sk_live_your_production_secret_key" {
+		warnings = append(warnings, "STRIPE_SECRET_KEY is not configured (billing features will be disabled)")
+	}
+	if len(warnings) > 0 {
+		fmt.Printf("⚠️  Configuration warnings:\n- %s\n\n", joinStrings(warnings, "\n- "))
 	}
 }
 
