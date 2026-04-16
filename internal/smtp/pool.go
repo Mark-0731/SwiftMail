@@ -75,7 +75,8 @@ func NewPool(cfg *config.SMTPConfig, logger zerolog.Logger) (*Pool, error) {
 		ctx:             ctx,
 		cancel:          cancel,
 		tlsConfig: &tls.Config{
-			InsecureSkipVerify: false, // Set to true only for development/testing
+			ServerName:         cfg.Host,
+			InsecureSkipVerify: cfg.Host == "localhost" || cfg.Host == "127.0.0.1", // Skip verification for localhost
 		},
 	}
 
