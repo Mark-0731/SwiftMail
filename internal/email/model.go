@@ -48,30 +48,30 @@ func CanTransition(from, to string) bool {
 
 // Model represents an email log record.
 type Model struct {
-	ID              uuid.UUID  `json:"id"`
-	UserID          uuid.UUID  `json:"user_id"`
-	DomainID        uuid.UUID  `json:"domain_id"`
-	IdempotencyKey  *string    `json:"idempotency_key,omitempty"`
-	MessageID       string     `json:"message_id"`
-	FromEmail       string     `json:"from_email"`
-	ToEmail         string     `json:"to_email"`
-	Subject         string     `json:"subject"`
-	Status          string     `json:"status"`
-	PreviousStatus  *string    `json:"previous_status,omitempty"`
-	StatusChangedAt time.Time  `json:"status_changed_at"`
-	TemplateID      *uuid.UUID `json:"template_id,omitempty"`
-	Tags            []string   `json:"tags"`
-	IPUsed          *string    `json:"ip_used,omitempty"`
-	SMTPResponse    *string    `json:"smtp_response,omitempty"`
-	RetryCount      int        `json:"retry_count"`
-	MaxRetries      int        `json:"max_retries"`
-	Attachments     []AttachmentRef `json:"attachments"`
+	ID              uuid.UUID              `json:"id"`
+	UserID          uuid.UUID              `json:"user_id"`
+	DomainID        *uuid.UUID             `json:"domain_id,omitempty"`
+	IdempotencyKey  *string                `json:"idempotency_key,omitempty"`
+	MessageID       string                 `json:"message_id"`
+	FromEmail       string                 `json:"from_email"`
+	ToEmail         string                 `json:"to_email"`
+	Subject         string                 `json:"subject"`
+	Status          string                 `json:"status"`
+	PreviousStatus  *string                `json:"previous_status,omitempty"`
+	StatusChangedAt time.Time              `json:"status_changed_at"`
+	TemplateID      *uuid.UUID             `json:"template_id,omitempty"`
+	Tags            []string               `json:"tags"`
+	IPUsed          *string                `json:"ip_used,omitempty"`
+	SMTPResponse    *string                `json:"smtp_response,omitempty"`
+	RetryCount      int                    `json:"retry_count"`
+	MaxRetries      int                    `json:"max_retries"`
+	Attachments     []AttachmentRef        `json:"attachments"`
 	Metadata        map[string]interface{} `json:"metadata,omitempty"`
-	OpenedAt        *time.Time `json:"opened_at,omitempty"`
-	ClickedAt       *time.Time `json:"clicked_at,omitempty"`
-	BouncedAt       *time.Time `json:"bounced_at,omitempty"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	OpenedAt        *time.Time             `json:"opened_at,omitempty"`
+	ClickedAt       *time.Time             `json:"clicked_at,omitempty"`
+	BouncedAt       *time.Time             `json:"bounced_at,omitempty"`
+	CreatedAt       time.Time              `json:"created_at"`
+	UpdatedAt       time.Time              `json:"updated_at"`
 }
 
 // AttachmentRef is a reference to a file stored in MinIO/S3.

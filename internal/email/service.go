@@ -156,12 +156,24 @@ func (s *service) Send(ctx context.Context, userID uuid.UUID, req *SendRequest, 
 
 	// 7. Extract domain from sender for domain lookup
 	fromDomain := extractDomain(req.From)
-	_ = fromDomain // Domain ID lookup would happen here in full implementation
+
+	// Look up domain ID (if domain exists)
+	var domainID *uuid.UUID
+	if fromDomain != "" {
+		// Try to get domain from database
+		domainKey := fmt.Sprintf("domain:%s:%s", userID.String(), fromDomain)
+		domainIDStr, err := s.rdb.Get(ctx, domainKey).Result()
+		if err == nil && domainIDStr != "" {
+			if id, err := uuid.Parse(domainIDStr); err == nil {
+				domainID = &id
+			}
+		}
+	}
 
 	// 8. Create email log
 	emailLog := &Model{
 		UserID:     userID,
-		DomainID:   uuid.Nil, // Set by domain lookup
+		DomainID:   domainID, // Can be nil if domain not found
 		MessageID:  messageID,
 		FromEmail:  req.From,
 		ToEmail:    req.To,
