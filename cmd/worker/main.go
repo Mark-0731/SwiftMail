@@ -67,8 +67,6 @@ func main() {
 		smtpSender,
 		m,
 		log,
-		cfg.SMTP.EnableRetries,
-		cfg.SMTP.MaxRetries,
 	)
 	trackHandler := worker.NewTrackHandler(emailRepo, log)
 	bounceHandler := worker.NewBounceHandler(emailRepo, log)

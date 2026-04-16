@@ -214,7 +214,7 @@ func (s *service) Send(ctx context.Context, userID uuid.UUID, req *SendRequest, 
 	// 10. Dispatch to Asynq queue (Redis LPUSH — < 1ms)
 	task := asynq.NewTask("email:send", payloadBytes,
 		asynq.Queue("high"),
-		asynq.MaxRetry(5),
+		asynq.MaxRetry(5), // Asynq will retry up to 5 times with exponential backoff
 		asynq.TaskID(emailLog.ID.String()),
 	)
 

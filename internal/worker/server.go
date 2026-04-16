@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"time"
 
 	"github.com/hibiken/asynq"
 	"github.com/rs/zerolog"
@@ -18,10 +19,16 @@ func NewServer(cfg *config.Config, logger zerolog.Logger) *asynq.Server {
 			"default":  cfg.Worker.QueueDefault,
 			"low":      cfg.Worker.QueueLow,
 		},
+		// Retry configuration (Asynq handles retries)
+		RetryDelayFunc: func(n int, err error, task *asynq.Task) time.Duration {
+			// Exponential backoff: 1s, 2s, 4s, 8s, 16s
+			return time.Duration(1<<uint(n)) * time.Second
+		},
 		ErrorHandler: asynq.ErrorHandlerFunc(func(ctx context.Context, task *asynq.Task, err error) {
 			logger.Error().
 				Err(err).
 				Str("type", task.Type()).
+				Str("task_id", task.ResultWriter().TaskID()).
 				Msg("task processing failed")
 		}),
 		Logger: &asynqLogger{logger: logger},

@@ -14,12 +14,10 @@ import (
 
 // SendHandler processes email:send tasks.
 type SendHandler struct {
-	emailRepo     email.Repository
-	smtpSender    *smtpengine.Sender
-	metrics       *metrics.Metrics
-	logger        zerolog.Logger
-	enableRetries bool // Whether to retry temporary SMTP failures
-	maxRetries    int  // Maximum retry attempts
+	emailRepo  email.Repository
+	smtpSender *smtpengine.Sender
+	metrics    *metrics.Metrics
+	logger     zerolog.Logger
 }
 
 // NewSendHandler creates a new send handler.
@@ -28,20 +26,17 @@ func NewSendHandler(
 	smtpSender *smtpengine.Sender,
 	m *metrics.Metrics,
 	logger zerolog.Logger,
-	enableRetries bool,
-	maxRetries int,
 ) *SendHandler {
 	return &SendHandler{
-		emailRepo:     emailRepo,
-		smtpSender:    smtpSender,
-		metrics:       m,
-		logger:        logger,
-		enableRetries: enableRetries,
-		maxRetries:    maxRetries,
+		emailRepo:  emailRepo,
+		smtpSender: smtpSender,
+		metrics:    m,
+		logger:     logger,
 	}
 }
 
 // ProcessTask handles the email:send task.
+// DESIGN: Asynq handles retries automatically - we just return errors
 func (h *SendHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 	start := time.Now()
 
@@ -56,10 +51,22 @@ func (h *SendHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 		Str("from", payload.From).
 		Logger()
 
-	// OPTIMIZATION: Skip intermediate status updates to reduce DB writes
-	// Old: queued → processing → sending → sent (3 writes)
-	// New: queued → sent (1 write)
-	// Saves: 4-6ms per email = 20-30% faster processing
+	// Get current email status for proper state transitions
+	emailLog, err := h.emailRepo.GetByID(ctx, payload.EmailLogID)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to get email log")
+		return fmt.Errorf("failed to get email log: %w", err)
+	}
+
+	currentStatus := emailLog.Status
+
+	// Update to processing state (if not already)
+	if currentStatus == email.StatusQueued || currentStatus == email.StatusDeferred {
+		if err := h.emailRepo.UpdateStatus(ctx, payload.EmailLogID, currentStatus, email.StatusProcessing, nil); err != nil {
+			log.Warn().Err(err).Msg("failed to update to processing state")
+		}
+		currentStatus = email.StatusProcessing
+	}
 
 	// Send via SMTP engine
 	smtpResponse, err := h.smtpSender.Send(ctx, &smtpengine.SendRequest{
@@ -79,51 +86,30 @@ func (h *SendHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 	if err != nil {
 		log.Error().Err(err).Str("smtp_response", smtpResponse).Msg("SMTP send failed")
 
-		// Check if application-level retries are enabled
-		// SMTP_ENABLE_RETRIES=false (default): Use when Postfix/relay handles retries
-		// SMTP_ENABLE_RETRIES=true: Use with direct SMTP APIs (SendGrid, AWS SES, Mailgun)
-		if !h.enableRetries {
-			// No application-level retries - SMTP relay handles delivery
-			h.emailRepo.UpdateStatus(ctx, payload.EmailLogID, email.StatusQueued, email.StatusFailed, &smtpResponse)
-			h.metrics.EmailsSentTotal.WithLabelValues("failed_no_retry", extractDomain(payload.To)).Inc()
-			log.Info().Msg("retries disabled - SMTP relay will handle delivery")
-			return nil // Don't retry - let Postfix/relay handle it
-		}
+		// Classify error type
+		isTemporary := isTemporaryError(smtpResponse)
 
-		// Application-level retries enabled - classify the error
-		if isTemporaryError(smtpResponse) {
-			// Get current retry count
-			var retryCount int
-			emailLog, err := h.emailRepo.GetByID(ctx, payload.EmailLogID)
-			if err == nil {
-				retryCount = emailLog.RetryCount
-			}
-
-			// Check if max retries exceeded
-			if retryCount >= h.maxRetries {
-				log.Warn().Int("retry_count", retryCount).Int("max_retries", h.maxRetries).Msg("max retries exceeded")
-				h.emailRepo.UpdateStatus(ctx, payload.EmailLogID, email.StatusQueued, email.StatusFailed, &smtpResponse)
-				h.metrics.EmailsSentTotal.WithLabelValues("failed", extractDomain(payload.To)).Inc()
-				return nil // Don't retry anymore
-			}
-
-			// Transition: queued → deferred (will be retried by Asynq)
-			h.emailRepo.UpdateStatus(ctx, payload.EmailLogID, email.StatusQueued, email.StatusDeferred, &smtpResponse)
-			h.emailRepo.IncrementRetry(ctx, payload.EmailLogID)
+		if isTemporary {
+			// Temporary error (4xx) - let Asynq retry
+			h.emailRepo.UpdateStatus(ctx, payload.EmailLogID, currentStatus, email.StatusDeferred, &smtpResponse)
 			h.metrics.EmailsSentTotal.WithLabelValues("deferred", extractDomain(payload.To)).Inc()
-			log.Info().Int("retry_count", retryCount+1).Int("max_retries", h.maxRetries).Msg("temporary error - will retry")
-			return fmt.Errorf("temporary SMTP error, will retry: %s", smtpResponse)
+			log.Info().Msg("temporary SMTP error - Asynq will retry")
+
+			// Return error to trigger Asynq retry
+			return fmt.Errorf("temporary SMTP error: %s", smtpResponse)
 		}
 
-		// Permanent failure (5xx) - no retry possible
-		h.emailRepo.UpdateStatus(ctx, payload.EmailLogID, email.StatusQueued, email.StatusFailed, &smtpResponse)
+		// Permanent error (5xx) - don't retry
+		h.emailRepo.UpdateStatus(ctx, payload.EmailLogID, currentStatus, email.StatusFailed, &smtpResponse)
 		h.metrics.EmailsSentTotal.WithLabelValues("failed", extractDomain(payload.To)).Inc()
 		log.Info().Msg("permanent SMTP error - not retrying")
-		return nil // Don't retry permanent failures
+
+		// Return nil to prevent Asynq retry
+		return nil
 	}
 
-	// Success: queued → sent (single optimized write)
-	h.emailRepo.UpdateStatus(ctx, payload.EmailLogID, email.StatusQueued, email.StatusSent, &smtpResponse)
+	// Success: processing → sent
+	h.emailRepo.UpdateStatus(ctx, payload.EmailLogID, currentStatus, email.StatusSent, &smtpResponse)
 	h.metrics.EmailsSentTotal.WithLabelValues("sent", extractDomain(payload.To)).Inc()
 
 	log.Info().
