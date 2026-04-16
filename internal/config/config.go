@@ -5,6 +5,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 // Config holds all application configuration loaded from environment variables.
@@ -133,6 +135,9 @@ type AppConfig struct {
 
 // Load reads all configuration from environment variables with sensible defaults.
 func Load() *Config {
+	// Try to load .env file (ignore error if it doesn't exist)
+	_ = godotenv.Load()
+
 	cfg := loadConfig()
 
 	// Validate production secrets
