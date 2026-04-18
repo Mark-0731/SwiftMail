@@ -13,8 +13,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
-	pkgdkim "github.com/swiftmail/swiftmail/pkg/dkim"
-	"github.com/swiftmail/swiftmail/pkg/validator"
+	pkgdkim "github.com/Mark-0731/SwiftMail/pkg/dkim"
+	"github.com/Mark-0731/SwiftMail/pkg/validator"
 )
 
 // Service defines the domain business logic interface.

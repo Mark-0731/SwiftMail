@@ -7,9 +7,9 @@ import (
 
 	"github.com/hibiken/asynq"
 	"github.com/rs/zerolog"
-	"github.com/swiftmail/swiftmail/internal/email"
-	smtpengine "github.com/swiftmail/swiftmail/internal/smtp"
-	"github.com/swiftmail/swiftmail/pkg/metrics"
+	"github.com/Mark-0731/SwiftMail/internal/email"
+	smtpengine "github.com/Mark-0731/SwiftMail/internal/smtp"
+	"github.com/Mark-0731/SwiftMail/pkg/metrics"
 )
 
 // SendHandler processes email:send tasks.

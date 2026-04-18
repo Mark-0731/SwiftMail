@@ -3,8 +3,8 @@ package admin
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	"github.com/swiftmail/swiftmail/internal/user"
-	"github.com/swiftmail/swiftmail/pkg/response"
+	"github.com/Mark-0731/SwiftMail/internal/user"
+	"github.com/Mark-0731/SwiftMail/pkg/response"
 )
 
 // Handler holds admin HTTP handlers.

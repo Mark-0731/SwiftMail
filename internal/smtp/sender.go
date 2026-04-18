@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	"github.com/rs/zerolog"
-	"github.com/swiftmail/swiftmail/pkg/dkim"
-	"github.com/swiftmail/swiftmail/pkg/mailer"
-	"github.com/swiftmail/swiftmail/pkg/metrics"
+	"github.com/Mark-0731/SwiftMail/pkg/dkim"
+	"github.com/Mark-0731/SwiftMail/pkg/mailer"
+	"github.com/Mark-0731/SwiftMail/pkg/metrics"
 )
 
 // SendRequest is the input for SMTP sending.

@@ -7,7 +7,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
-	"github.com/swiftmail/swiftmail/pkg/metrics"
+	"github.com/Mark-0731/SwiftMail/pkg/metrics"
 )
 
 // Logger middleware logs all requests with zerolog.

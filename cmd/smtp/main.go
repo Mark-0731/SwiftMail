@@ -10,10 +10,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/swiftmail/swiftmail/internal/auth"
-	"github.com/swiftmail/swiftmail/internal/config"
-	"github.com/swiftmail/swiftmail/internal/smtprelay"
-	"github.com/swiftmail/swiftmail/pkg/logger"
+	"github.com/Mark-0731/SwiftMail/internal/auth"
+	"github.com/Mark-0731/SwiftMail/internal/config"
+	"github.com/Mark-0731/SwiftMail/internal/smtprelay"
+	"github.com/Mark-0731/SwiftMail/pkg/logger"
 )
 
 func main() {

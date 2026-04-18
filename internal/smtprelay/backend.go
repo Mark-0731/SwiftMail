@@ -8,7 +8,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 
-	"github.com/swiftmail/swiftmail/internal/auth"
+	"github.com/Mark-0731/SwiftMail/internal/auth"
 )
 
 // Backend implements SMTP server backend.

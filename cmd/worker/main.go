@@ -9,12 +9,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/swiftmail/swiftmail/internal/config"
-	"github.com/swiftmail/swiftmail/internal/email"
-	smtpengine "github.com/swiftmail/swiftmail/internal/smtp"
-	"github.com/swiftmail/swiftmail/internal/worker"
-	"github.com/swiftmail/swiftmail/pkg/logger"
-	"github.com/swiftmail/swiftmail/pkg/metrics"
+	"github.com/Mark-0731/SwiftMail/internal/config"
+	"github.com/Mark-0731/SwiftMail/internal/email"
+	smtpengine "github.com/Mark-0731/SwiftMail/internal/smtp"
+	"github.com/Mark-0731/SwiftMail/internal/worker"
+	"github.com/Mark-0731/SwiftMail/pkg/logger"
+	"github.com/Mark-0731/SwiftMail/pkg/metrics"
 )
 
 func main() {

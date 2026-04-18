@@ -6,8 +6,8 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/swiftmail/swiftmail/internal/server/middleware"
-	"github.com/swiftmail/swiftmail/pkg/response"
+	"github.com/Mark-0731/SwiftMail/internal/server/middleware"
+	"github.com/Mark-0731/SwiftMail/pkg/response"
 )
 
 // Handler holds domain HTTP handlers.

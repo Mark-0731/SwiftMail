@@ -13,9 +13,9 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
-	"github.com/swiftmail/swiftmail/internal/template"
-	"github.com/swiftmail/swiftmail/pkg/response"
-	"github.com/swiftmail/swiftmail/pkg/validator"
+	"github.com/Mark-0731/SwiftMail/internal/template"
+	"github.com/Mark-0731/SwiftMail/pkg/response"
+	"github.com/Mark-0731/SwiftMail/pkg/validator"
 )
 
 // Service defines the email business logic interface.

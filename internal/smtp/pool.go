@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/swiftmail/swiftmail/internal/config"
+	"github.com/Mark-0731/SwiftMail/internal/config"
 )
 
 // Pool manages a pool of SMTP connections for high-throughput delivery.

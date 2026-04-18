@@ -8,8 +8,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
-	"github.com/swiftmail/swiftmail/internal/auth"
-	"github.com/swiftmail/swiftmail/pkg/response"
+	"github.com/Mark-0731/SwiftMail/internal/auth"
+	"github.com/Mark-0731/SwiftMail/pkg/response"
 )
 
 // JWTAuth middleware validates JWT tokens from the Authorization header.

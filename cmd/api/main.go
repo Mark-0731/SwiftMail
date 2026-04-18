@@ -16,11 +16,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/swiftmail/swiftmail/internal/config"
-	"github.com/swiftmail/swiftmail/internal/server"
-	"github.com/swiftmail/swiftmail/internal/warmup"
-	"github.com/swiftmail/swiftmail/pkg/logger"
-	"github.com/swiftmail/swiftmail/pkg/metrics"
+	"github.com/Mark-0731/SwiftMail/internal/config"
+	"github.com/Mark-0731/SwiftMail/internal/server"
+	"github.com/Mark-0731/SwiftMail/internal/warmup"
+	"github.com/Mark-0731/SwiftMail/pkg/logger"
+	"github.com/Mark-0731/SwiftMail/pkg/metrics"
 )
 
 func main() {

@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/swiftmail/swiftmail/internal/config"
-	"github.com/swiftmail/swiftmail/pkg/logger"
+	"github.com/Mark-0731/SwiftMail/internal/config"
+	"github.com/Mark-0731/SwiftMail/pkg/logger"
 )
 
 func main() {

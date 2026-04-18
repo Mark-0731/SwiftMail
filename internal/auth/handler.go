@@ -5,7 +5,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	"github.com/swiftmail/swiftmail/pkg/response"
+	"github.com/Mark-0731/SwiftMail/pkg/response"
 )
 
 // Handler holds auth HTTP handlers.

@@ -18,7 +18,7 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
-	"github.com/swiftmail/swiftmail/internal/worker"
+	"github.com/Mark-0731/SwiftMail/internal/worker"
 )
 
 // 1x1 transparent PNG pixel (pre-computed, served from memory).

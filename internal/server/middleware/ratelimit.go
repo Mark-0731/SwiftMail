@@ -3,8 +3,8 @@ package middleware
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	"github.com/swiftmail/swiftmail/pkg/ratelimit"
-	"github.com/swiftmail/swiftmail/pkg/response"
+	"github.com/Mark-0731/SwiftMail/pkg/ratelimit"
+	"github.com/Mark-0731/SwiftMail/pkg/response"
 )
 
 // RateLimit middleware enforces per-user rate limits.

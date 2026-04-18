@@ -1,4 +1,4 @@
-module github.com/swiftmail/swiftmail
+module github.com/Mark-0731/SwiftMail
 
 go 1.26.1
 

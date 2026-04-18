@@ -10,7 +10,7 @@ import (
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/rs/zerolog"
-	"github.com/swiftmail/swiftmail/internal/config"
+	"github.com/Mark-0731/SwiftMail/internal/config"
 )
 
 // S3Client wraps MinIO client for attachment storage.

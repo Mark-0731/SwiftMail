@@ -6,7 +6,7 @@ import (
 
 	"github.com/emersion/go-smtp"
 	"github.com/rs/zerolog"
-	"github.com/swiftmail/swiftmail/internal/config"
+	"github.com/Mark-0731/SwiftMail/internal/config"
 )
 
 // Server wraps the SMTP server with configuration.
