@@ -15,6 +15,8 @@ import (
 	"github.com/Mark-0731/SwiftMail/internal/config"
 	"github.com/Mark-0731/SwiftMail/internal/domain"
 	"github.com/Mark-0731/SwiftMail/internal/email"
+	"github.com/Mark-0731/SwiftMail/internal/infrastructure/cache"
+	"github.com/Mark-0731/SwiftMail/internal/infrastructure/queue"
 	"github.com/Mark-0731/SwiftMail/internal/server/middleware"
 	"github.com/Mark-0731/SwiftMail/internal/suppression"
 	tmpl "github.com/Mark-0731/SwiftMail/internal/template"
@@ -56,12 +58,16 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *redis.Client, asynqClient *a
 	webhookRepo := webhook.NewRepository(db)
 	userRepo := user.NewRepository(db)
 
+	// ─── Infrastructure Adapters ─────────────────────────────────────────
+	cacheAdapter := cache.NewRedisCache(rdb, logger)
+	queueAdapter := queue.NewAsynqQueue(asynqClient, logger)
+
 	// ─── Services ────────────────────────────────────────────────────────
 	authService := auth.NewService(authRepo, jwtManager, totpManager, apiKeyManager, logger)
 	dnsChecker := domain.NewDNSChecker()
 	domainService := domain.NewService(domainRepo, dnsChecker, rdb, logger)
 	templateService := tmpl.NewService(templateRepo, logger)
-	emailService := email.NewService(emailRepo, templateService, rdb, asynqClient, logger)
+	emailService := email.NewService(emailRepo, templateService, cacheAdapter, queueAdapter, logger)
 	suppressionService := suppression.NewService(suppressionRepo, rdb, logger)
 	webhookDispatcher := webhook.NewDispatcher(webhookRepo, logger)
 	stripeService := billing.NewStripeService(

@@ -7,7 +7,7 @@ import (
 
 	"github.com/Mark-0731/SwiftMail/internal/config"
 	"github.com/Mark-0731/SwiftMail/internal/email"
-	smtpengine "github.com/Mark-0731/SwiftMail/internal/smtp"
+	"github.com/Mark-0731/SwiftMail/internal/provider"
 	"github.com/Mark-0731/SwiftMail/pkg/metrics"
 	"github.com/Mark-0731/SwiftMail/pkg/tracking"
 	"github.com/hibiken/asynq"
@@ -16,27 +16,27 @@ import (
 
 // SendHandler processes email:send tasks.
 type SendHandler struct {
-	emailRepo  email.Repository
-	smtpSender *smtpengine.Sender
-	metrics    *metrics.Metrics
-	logger     zerolog.Logger
-	config     *config.Config
+	emailRepo email.Repository
+	provider  provider.Provider
+	metrics   *metrics.Metrics
+	logger    zerolog.Logger
+	config    *config.Config
 }
 
 // NewSendHandler creates a new send handler.
 func NewSendHandler(
 	emailRepo email.Repository,
-	smtpSender *smtpengine.Sender,
+	provider provider.Provider,
 	m *metrics.Metrics,
 	cfg *config.Config,
 	logger zerolog.Logger,
 ) *SendHandler {
 	return &SendHandler{
-		emailRepo:  emailRepo,
-		smtpSender: smtpSender,
-		metrics:    m,
-		config:     cfg,
-		logger:     logger,
+		emailRepo: emailRepo,
+		provider:  provider,
+		metrics:   m,
+		config:    cfg,
+		logger:    logger,
 	}
 }
 
@@ -83,14 +83,19 @@ func (h *SendHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 		htmlContent = tracking.InjectPixel(htmlContent, payload.EmailLogID.String(), h.config.App.BaseURL)
 	}
 
-	// Send via SMTP engine
-	smtpResponse, err := h.smtpSender.Send(ctx, &smtpengine.SendRequest{
+	// Send via provider (SMTP or SendGrid)
+	var replyTo *string
+	if payload.ReplyTo != "" {
+		replyTo = &payload.ReplyTo
+	}
+
+	providerResp, err := h.provider.Send(ctx, &provider.SendRequest{
 		From:      payload.From,
 		To:        payload.To,
 		Subject:   payload.Subject,
 		HTML:      htmlContent, // Use modified HTML with tracking
 		Text:      payload.Text,
-		ReplyTo:   payload.ReplyTo,
+		ReplyTo:   replyTo,
 		Headers:   payload.Headers,
 		MessageID: payload.MessageID,
 	})
@@ -99,37 +104,43 @@ func (h *SendHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 	h.metrics.EmailDeliveryDuration.Observe(duration)
 
 	if err != nil {
-		log.Error().Err(err).Str("smtp_response", smtpResponse).Msg("SMTP send failed")
+		errorMsg := err.Error()
+		if providerResp != nil && providerResp.Error != "" {
+			errorMsg = providerResp.Error
+		}
+
+		log.Error().Err(err).Str("provider_response", errorMsg).Msg("provider send failed")
 
 		// Classify error type
-		isTemporary := isTemporaryError(smtpResponse)
+		isTemporary := isTemporaryError(errorMsg)
 
 		if isTemporary {
 			// Temporary error (4xx) - let Asynq retry
-			h.emailRepo.UpdateStatus(ctx, payload.EmailLogID, currentStatus, email.StatusDeferred, &smtpResponse)
+			h.emailRepo.UpdateStatus(ctx, payload.EmailLogID, currentStatus, email.StatusDeferred, &errorMsg)
 			h.metrics.EmailsSentTotal.WithLabelValues("deferred", extractDomain(payload.To)).Inc()
-			log.Info().Msg("temporary SMTP error - Asynq will retry")
+			log.Info().Msg("temporary error - Asynq will retry")
 
 			// Return error to trigger Asynq retry
-			return fmt.Errorf("temporary SMTP error: %s", smtpResponse)
+			return fmt.Errorf("temporary error: %s", errorMsg)
 		}
 
 		// Permanent error (5xx) - don't retry
-		h.emailRepo.UpdateStatus(ctx, payload.EmailLogID, currentStatus, email.StatusFailed, &smtpResponse)
+		h.emailRepo.UpdateStatus(ctx, payload.EmailLogID, currentStatus, email.StatusFailed, &errorMsg)
 		h.metrics.EmailsSentTotal.WithLabelValues("failed", extractDomain(payload.To)).Inc()
-		log.Info().Msg("permanent SMTP error - not retrying")
+		log.Info().Msg("permanent error - not retrying")
 
 		// Return nil to prevent Asynq retry
 		return nil
 	}
 
 	// Success: processing → sent
-	h.emailRepo.UpdateStatus(ctx, payload.EmailLogID, currentStatus, email.StatusSent, &smtpResponse)
+	successMsg := providerResp.ProviderMessageID
+	h.emailRepo.UpdateStatus(ctx, payload.EmailLogID, currentStatus, email.StatusSent, &successMsg)
 	h.metrics.EmailsSentTotal.WithLabelValues("sent", extractDomain(payload.To)).Inc()
 
 	log.Info().
 		Float64("duration_ms", duration*1000).
-		Str("smtp_response", smtpResponse).
+		Str("provider_message_id", providerResp.ProviderMessageID).
 		Msg("email sent successfully")
 
 	return nil

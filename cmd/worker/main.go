@@ -11,6 +11,7 @@ import (
 
 	"github.com/Mark-0731/SwiftMail/internal/config"
 	"github.com/Mark-0731/SwiftMail/internal/email"
+	"github.com/Mark-0731/SwiftMail/internal/provider"
 	smtpengine "github.com/Mark-0731/SwiftMail/internal/smtp"
 	"github.com/Mark-0731/SwiftMail/internal/worker"
 	"github.com/Mark-0731/SwiftMail/pkg/logger"
@@ -58,13 +59,27 @@ func main() {
 	mxResolver := smtpengine.NewMXResolver(rdb, log)
 	smtpSender := smtpengine.NewSender(smtpPool, circuitBreaker, mxResolver, m, log)
 
+	// Initialize email provider (SMTP as primary)
+	smtpProvider := provider.NewSMTPProvider(smtpSender, log)
+
+	// Optional: Add SendGrid as fallback for testing
+	// Uncomment and set SENDGRID_API_KEY environment variable to enable
+	var emailProvider provider.Provider = smtpProvider
+	if sendgridKey := os.Getenv("SENDGRID_API_KEY"); sendgridKey != "" {
+		sendgridProvider := provider.NewSendGridProvider(sendgridKey, log)
+		emailProvider = provider.NewSelector(smtpProvider, sendgridProvider, log)
+		log.Info().Msg("SendGrid fallback enabled")
+	} else {
+		log.Info().Msg("using SMTP provider only")
+	}
+
 	// Initialize repositories
 	emailRepo := email.NewPostgresRepository(dbPool)
 
 	// Initialize handlers
 	sendHandler := worker.NewSendHandler(
 		emailRepo,
-		smtpSender,
+		emailProvider,
 		m,
 		cfg,
 		log,

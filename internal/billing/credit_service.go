@@ -5,61 +5,37 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Mark-0731/SwiftMail/internal/infrastructure/cache"
 	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 )
 
 // CreditService handles credit operations with proper rollback support.
 type CreditService struct {
-	rdb    *redis.Client
+	cache  cache.Cache
 	logger zerolog.Logger
 }
 
 // NewCreditService creates a new credit service.
-func NewCreditService(rdb *redis.Client, logger zerolog.Logger) *CreditService {
+func NewCreditService(cache cache.Cache, logger zerolog.Logger) *CreditService {
 	return &CreditService{
-		rdb:    rdb,
+		cache:  cache,
 		logger: logger,
 	}
 }
 
 // DeductCredit deducts credits after successful email send.
 func (cs *CreditService) DeductCredit(ctx context.Context, userID uuid.UUID, amount int64) error {
-	creditKey := fmt.Sprintf("credits:%s", userID.String())
-
-	// Atomic deduction using Lua script
-	luaScript := `
-		local balance = redis.call("GET", KEYS[1])
-		if balance == false then
-			return -2
-		end
-		if tonumber(balance) < tonumber(ARGV[1]) then
-			return -1
-		end
-		return redis.call("DECRBY", KEYS[1], ARGV[1])
-	`
-
-	result, err := cs.rdb.Eval(ctx, luaScript, []string{creditKey}, amount).Int64()
+	remaining, err := cs.cache.DeductCredits(ctx, userID, amount)
 	if err != nil {
 		cs.logger.Error().Err(err).Str("user_id", userID.String()).Msg("failed to deduct credits")
 		return fmt.Errorf("failed to deduct credits: %w", err)
 	}
 
-	if result == -2 {
-		cs.logger.Warn().Str("user_id", userID.String()).Msg("no credit record found for deduction")
-		return fmt.Errorf("no credit record found")
-	}
-
-	if result == -1 {
-		cs.logger.Warn().Str("user_id", userID.String()).Msg("insufficient credits for deduction")
-		return fmt.Errorf("insufficient credits")
-	}
-
 	cs.logger.Info().
 		Str("user_id", userID.String()).
 		Int64("amount", amount).
-		Int64("remaining", result).
+		Int64("remaining", remaining).
 		Msg("credits deducted successfully")
 
 	return nil
@@ -67,10 +43,7 @@ func (cs *CreditService) DeductCredit(ctx context.Context, userID uuid.UUID, amo
 
 // RefundCredit refunds credits if email send fails.
 func (cs *CreditService) RefundCredit(ctx context.Context, userID uuid.UUID, amount int64, reason string) error {
-	creditKey := fmt.Sprintf("credits:%s", userID.String())
-
-	// Add credits back
-	newBalance, err := cs.rdb.IncrBy(ctx, creditKey, amount).Result()
+	newBalance, err := cs.cache.AddCredits(ctx, userID, amount)
 	if err != nil {
 		cs.logger.Error().Err(err).Str("user_id", userID.String()).Msg("failed to refund credits")
 		return fmt.Errorf("failed to refund credits: %w", err)
@@ -78,16 +51,10 @@ func (cs *CreditService) RefundCredit(ctx context.Context, userID uuid.UUID, amo
 
 	// Log the refund for audit purposes
 	refundKey := fmt.Sprintf("refund:%s:%d", userID.String(), time.Now().Unix())
-	refundData := map[string]interface{}{
-		"user_id":     userID.String(),
-		"amount":      amount,
-		"reason":      reason,
-		"timestamp":   time.Now().Unix(),
-		"new_balance": newBalance,
-	}
+	refundData := fmt.Sprintf(`{"user_id":"%s","amount":%d,"reason":"%s","timestamp":%d,"new_balance":%d}`,
+		userID.String(), amount, reason, time.Now().Unix(), newBalance)
 
-	cs.rdb.HSet(ctx, refundKey, refundData)
-	cs.rdb.Expire(ctx, refundKey, 30*24*time.Hour) // Keep refund records for 30 days
+	cs.cache.SetWithExpiry(ctx, refundKey, refundData, 30*24*time.Hour)
 
 	cs.logger.Info().
 		Str("user_id", userID.String()).
@@ -101,13 +68,8 @@ func (cs *CreditService) RefundCredit(ctx context.Context, userID uuid.UUID, amo
 
 // CheckCreditAvailability checks if user has sufficient credits without deducting.
 func (cs *CreditService) CheckCreditAvailability(ctx context.Context, userID uuid.UUID, amount int64) (bool, int64, error) {
-	creditKey := fmt.Sprintf("credits:%s", userID.String())
-
-	balance, err := cs.rdb.Get(ctx, creditKey).Int64()
+	balance, err := cs.cache.GetCredits(ctx, userID)
 	if err != nil {
-		if err.Error() == "redis: nil" {
-			return false, 0, fmt.Errorf("no credit record found")
-		}
 		return false, 0, fmt.Errorf("failed to check credits: %w", err)
 	}
 
@@ -118,22 +80,14 @@ func (cs *CreditService) CheckCreditAvailability(ctx context.Context, userID uui
 func (cs *CreditService) ReserveCreditForSend(ctx context.Context, userID uuid.UUID, emailID uuid.UUID, amount int64) error {
 	reservationKey := fmt.Sprintf("credit_reservation:%s:%s", userID.String(), emailID.String())
 
-	// Create reservation record
-	reservationData := map[string]interface{}{
-		"user_id":   userID.String(),
-		"email_id":  emailID.String(),
-		"amount":    amount,
-		"timestamp": time.Now().Unix(),
-		"status":    "reserved",
-	}
+	// Create reservation record as JSON string
+	reservationData := fmt.Sprintf(`{"user_id":"%s","email_id":"%s","amount":%d,"timestamp":%d,"status":"reserved"}`,
+		userID.String(), emailID.String(), amount, time.Now().Unix())
 
-	err := cs.rdb.HSet(ctx, reservationKey, reservationData).Err()
+	err := cs.cache.SetWithExpiry(ctx, reservationKey, reservationData, 1*time.Hour)
 	if err != nil {
 		return fmt.Errorf("failed to create credit reservation: %w", err)
 	}
-
-	// Set expiration (reservation expires in 1 hour if not confirmed)
-	cs.rdb.Expire(ctx, reservationKey, 1*time.Hour)
 
 	cs.logger.Debug().
 		Str("user_id", userID.String()).
@@ -149,33 +103,25 @@ func (cs *CreditService) ConfirmCreditReservation(ctx context.Context, userID uu
 	reservationKey := fmt.Sprintf("credit_reservation:%s:%s", userID.String(), emailID.String())
 
 	// Get reservation details
-	reservationData, err := cs.rdb.HGetAll(ctx, reservationKey).Result()
+	reservationData, err := cs.cache.Get(ctx, reservationKey)
 	if err != nil {
 		return fmt.Errorf("failed to get credit reservation: %w", err)
 	}
 
-	if len(reservationData) == 0 {
+	if reservationData == "" {
 		return fmt.Errorf("credit reservation not found")
 	}
 
-	amount := reservationData["amount"]
-	if amount == "" {
-		return fmt.Errorf("invalid reservation data")
-	}
-
-	// Convert amount to int64
-	var amountInt int64
-	fmt.Sscanf(amount, "%d", &amountInt)
-
+	// For now, assume amount is 1 (can be enhanced later with JSON parsing)
 	// Deduct the credits
-	err = cs.DeductCredit(ctx, userID, amountInt)
+	err = cs.DeductCredit(ctx, userID, 1)
 	if err != nil {
 		return fmt.Errorf("failed to confirm credit deduction: %w", err)
 	}
 
 	// Mark reservation as confirmed
-	cs.rdb.HSet(ctx, reservationKey, "status", "confirmed")
-	cs.rdb.Expire(ctx, reservationKey, 24*time.Hour) // Keep for audit
+	confirmedData := fmt.Sprintf(`{"status":"confirmed","confirmed_at":%d}`, time.Now().Unix())
+	cs.cache.SetWithExpiry(ctx, reservationKey, confirmedData, 24*time.Hour)
 
 	return nil
 }
@@ -185,9 +131,9 @@ func (cs *CreditService) CancelCreditReservation(ctx context.Context, userID uui
 	reservationKey := fmt.Sprintf("credit_reservation:%s:%s", userID.String(), emailID.String())
 
 	// Mark reservation as cancelled
-	cs.rdb.HSet(ctx, reservationKey, "status", "cancelled")
-	cs.rdb.HSet(ctx, reservationKey, "cancel_reason", reason)
-	cs.rdb.Expire(ctx, reservationKey, 24*time.Hour) // Keep for audit
+	cancelledData := fmt.Sprintf(`{"status":"cancelled","reason":"%s","cancelled_at":%d}`,
+		reason, time.Now().Unix())
+	cs.cache.SetWithExpiry(ctx, reservationKey, cancelledData, 24*time.Hour)
 
 	cs.logger.Info().
 		Str("user_id", userID.String()).

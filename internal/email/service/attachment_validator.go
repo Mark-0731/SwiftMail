@@ -1,4 +1,4 @@
-package email
+package service
 
 import (
 	"fmt"
@@ -6,6 +6,14 @@ import (
 	"path/filepath"
 	"strings"
 )
+
+// AttachmentData represents attachment data (duplicated to avoid import cycle).
+type AttachmentData struct {
+	Filename    string
+	ContentType string
+	Data        []byte
+	Size        int64
+}
 
 const (
 	// Size limits
