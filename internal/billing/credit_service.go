@@ -66,7 +66,34 @@ func (cs *CreditService) RefundCredit(ctx context.Context, userID uuid.UUID, amo
 	return nil
 }
 
+// CheckAndReserve atomically checks and reserves credits (prevents race condition).
+func (cs *CreditService) CheckAndReserve(ctx context.Context, userID uuid.UUID, amount int64) (bool, int64, error) {
+	reserved, newBalance, err := cs.cache.CheckAndReserveCredits(ctx, userID, amount)
+	if err != nil {
+		cs.logger.Error().Err(err).Str("user_id", userID.String()).Msg("failed to check and reserve credits")
+		return false, 0, fmt.Errorf("failed to check and reserve credits: %w", err)
+	}
+
+	if !reserved {
+		cs.logger.Warn().
+			Str("user_id", userID.String()).
+			Int64("amount", amount).
+			Int64("balance", newBalance).
+			Msg("insufficient credits for reservation")
+		return false, newBalance, nil
+	}
+
+	cs.logger.Info().
+		Str("user_id", userID.String()).
+		Int64("amount", amount).
+		Int64("new_balance", newBalance).
+		Msg("credits reserved atomically")
+
+	return true, newBalance, nil
+}
+
 // CheckCreditAvailability checks if user has sufficient credits without deducting.
+// DEPRECATED: Use CheckAndReserve() instead to avoid race conditions.
 func (cs *CreditService) CheckCreditAvailability(ctx context.Context, userID uuid.UUID, amount int64) (bool, int64, error) {
 	balance, err := cs.cache.GetCredits(ctx, userID)
 	if err != nil {

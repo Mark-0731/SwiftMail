@@ -1,36 +1,29 @@
-package email
+package repository
 
 import (
 	"context"
 	"fmt"
 	"strings"
 
+	"github.com/Mark-0731/SwiftMail/internal/email"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Repository defines the email log data access interface.
-type Repository interface {
-	Create(ctx context.Context, e *Model) error
-	GetByID(ctx context.Context, id uuid.UUID) (*Model, error)
-	UpdateStatus(ctx context.Context, id uuid.UUID, from, to string, smtpResponse *string) error
-	Search(ctx context.Context, q *LogQuery) ([]Model, int64, error)
-	IncrementRetry(ctx context.Context, id uuid.UUID) error
-	SetOpened(ctx context.Context, id uuid.UUID) error
-	SetClicked(ctx context.Context, id uuid.UUID) error
-}
+// Ensure PostgresRepository implements Repository
+var _ Repository = (*PostgresRepository)(nil)
 
-// PostgresRepository implements Repository.
+// PostgresRepository implements Repository using PostgreSQL.
 type PostgresRepository struct {
 	db *pgxpool.Pool
 }
 
-// NewPostgresRepository creates a new email repository.
-func NewPostgresRepository(db *pgxpool.Pool) *PostgresRepository {
+// NewPostgresRepository creates a new PostgreSQL email repository.
+func NewPostgresRepository(db *pgxpool.Pool) Repository {
 	return &PostgresRepository{db: db}
 }
 
-func (r *PostgresRepository) Create(ctx context.Context, e *Model) error {
+func (r *PostgresRepository) Create(ctx context.Context, e *email.Model) error {
 	return r.db.QueryRow(ctx,
 		`INSERT INTO email_logs (user_id, domain_id, idempotency_key, message_id, from_email, to_email, subject, status, template_id, tags, attachments, metadata, max_retries)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
@@ -40,8 +33,8 @@ func (r *PostgresRepository) Create(ctx context.Context, e *Model) error {
 	).Scan(&e.ID, &e.CreatedAt, &e.UpdatedAt, &e.StatusChangedAt)
 }
 
-func (r *PostgresRepository) GetByID(ctx context.Context, id uuid.UUID) (*Model, error) {
-	e := &Model{}
+func (r *PostgresRepository) GetByID(ctx context.Context, id uuid.UUID) (*email.Model, error) {
+	e := &email.Model{}
 	err := r.db.QueryRow(ctx,
 		`SELECT id, user_id, domain_id, idempotency_key, message_id, from_email, to_email, subject,
 		        status, previous_status, status_changed_at, template_id, tags, ip_used, smtp_response,
@@ -71,7 +64,7 @@ func (r *PostgresRepository) UpdateStatus(ctx context.Context, id uuid.UUID, fro
 	return nil
 }
 
-func (r *PostgresRepository) Search(ctx context.Context, q *LogQuery) ([]Model, int64, error) {
+func (r *PostgresRepository) Search(ctx context.Context, q *email.LogQuery) ([]email.Model, int64, error) {
 	var conditions []string
 	var args []interface{}
 	argIdx := 1
@@ -138,9 +131,9 @@ func (r *PostgresRepository) Search(ctx context.Context, q *LogQuery) ([]Model, 
 	}
 	defer rows.Close()
 
-	var results []Model
+	var results []email.Model
 	for rows.Next() {
-		e := Model{}
+		e := email.Model{}
 		if err := rows.Scan(
 			&e.ID, &e.UserID, &e.DomainID, &e.MessageID, &e.FromEmail, &e.ToEmail,
 			&e.Subject, &e.Status, &e.Tags, &e.IPUsed, &e.SMTPResponse, &e.RetryCount,

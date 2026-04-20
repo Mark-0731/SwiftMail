@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -9,13 +10,7 @@ import (
 
 // Pipeline defines the email send pipeline interface.
 type Pipeline interface {
-	Execute(ctx context.Context, state *State) (*Result, error)
-}
-
-// Stage represents a single stage in the pipeline.
-type Stage interface {
-	Execute(ctx context.Context, state *State) error
-	Name() string
+	Execute(ctx context.Context, emailCtx *EmailContext) (*Result, error)
 }
 
 // EmailRepository defines the interface for email persistence (to avoid import cycle).
@@ -39,78 +34,48 @@ type EmailModel struct {
 	IdempotencyKey *string
 }
 
-// State holds the data that flows through the pipeline.
-type State struct {
-	// Input
-	UserID         uuid.UUID
-	From           string
-	To             string
-	Subject        string
-	HTML           string
-	Text           string
-	ReplyTo        *string
-	Headers        map[string]string
-	TemplateID     *uuid.UUID
-	Variables      map[string]string
-	Tags           []string
-	Attachments    []AttachmentData
-	IdempotencyKey string
-
-	// Processed data (populated by stages)
-	RenderedSubject  string
-	RenderedHTML     string
-	RenderedText     string
-	SanitizedHeaders map[string]string
-	MessageID        string
-	DomainID         *uuid.UUID
-	EmailLogID       uuid.UUID
-	CreditReserved   bool
-	SpamScore        int
-}
-
-// AttachmentData represents attachment data in the pipeline.
-type AttachmentData struct {
-	Filename    string
-	ContentType string
-	Data        []byte
-	Size        int64
-}
-
 // Result is the output of the pipeline.
 type Result struct {
 	EmailID   uuid.UUID
 	MessageID string
 	Status    string
+	Duration  time.Duration
+	StepTimes map[string]time.Duration
 }
 
 // EmailSendPipeline implements the Pipeline interface.
 type EmailSendPipeline struct {
-	stages []Stage
+	steps []Step
 }
 
 // NewEmailSendPipeline creates a new email send pipeline.
-func NewEmailSendPipeline(stages []Stage) Pipeline {
+func NewEmailSendPipeline(steps []Step) Pipeline {
 	return &EmailSendPipeline{
-		stages: stages,
+		steps: steps,
 	}
 }
 
-// Execute runs all stages in sequence.
-func (p *EmailSendPipeline) Execute(ctx context.Context, state *State) (*Result, error) {
-	for _, stage := range p.stages {
+// Execute runs all steps in sequence with metrics tracking.
+func (p *EmailSendPipeline) Execute(ctx context.Context, emailCtx *EmailContext) (*Result, error) {
+	for _, step := range p.steps {
 		start := time.Now()
 
-		if err := stage.Execute(ctx, state); err != nil {
-			return nil, err
-		}
-
+		err := step.Execute(ctx, emailCtx)
 		duration := time.Since(start)
-		_ = duration // TODO: Add metrics
+
+		// Record step duration in context
+		emailCtx.RecordStepDuration(step.Name(), duration)
+
+		if err != nil {
+			return nil, fmt.Errorf("pipeline step '%s' failed: %w", step.Name(), err)
+		}
 	}
 
 	return &Result{
-		EmailID:   state.EmailLogID,
-		MessageID: state.MessageID,
+		EmailID:   emailCtx.EmailLogID,
+		MessageID: emailCtx.MessageID,
 		Status:    "queued",
+		Duration:  emailCtx.TotalDuration(),
+		StepTimes: emailCtx.StepTimes,
 	}, nil
 }

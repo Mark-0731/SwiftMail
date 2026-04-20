@@ -1,6 +1,8 @@
-package email
+package handler
 
-import "github.com/gofiber/fiber/v2"
+import (
+	"github.com/gofiber/fiber/v2"
+)
 
 // RegisterRoutes registers email sending and log routes.
 func RegisterRoutes(router fiber.Router, handler *Handler) {

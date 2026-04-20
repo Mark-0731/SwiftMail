@@ -7,6 +7,8 @@ import (
 
 	"github.com/Mark-0731/SwiftMail/internal/config"
 	"github.com/Mark-0731/SwiftMail/internal/email"
+	"github.com/Mark-0731/SwiftMail/internal/email/repository"
+	"github.com/Mark-0731/SwiftMail/internal/events"
 	"github.com/Mark-0731/SwiftMail/internal/provider"
 	"github.com/Mark-0731/SwiftMail/pkg/metrics"
 	"github.com/Mark-0731/SwiftMail/pkg/tracking"
@@ -16,8 +18,9 @@ import (
 
 // SendHandler processes email:send tasks.
 type SendHandler struct {
-	emailRepo email.Repository
+	emailRepo repository.Repository
 	provider  provider.Provider
+	eventBus  events.Bus
 	metrics   *metrics.Metrics
 	logger    zerolog.Logger
 	config    *config.Config
@@ -25,8 +28,9 @@ type SendHandler struct {
 
 // NewSendHandler creates a new send handler.
 func NewSendHandler(
-	emailRepo email.Repository,
+	emailRepo repository.Repository,
 	provider provider.Provider,
+	eventBus events.Bus,
 	m *metrics.Metrics,
 	cfg *config.Config,
 	logger zerolog.Logger,
@@ -34,6 +38,7 @@ func NewSendHandler(
 	return &SendHandler{
 		emailRepo: emailRepo,
 		provider:  provider,
+		eventBus:  eventBus,
 		metrics:   m,
 		config:    cfg,
 		logger:    logger,
@@ -129,6 +134,12 @@ func (h *SendHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 		h.metrics.EmailsSentTotal.WithLabelValues("failed", extractDomain(payload.To)).Inc()
 		log.Info().Msg("permanent error - not retrying")
 
+		// Publish email.failed event
+		event := events.EmailFailedEvent(payload.EmailLogID, payload.UserID, errorMsg)
+		if err := h.eventBus.Publish(ctx, event); err != nil {
+			log.Warn().Err(err).Msg("failed to publish email.failed event")
+		}
+
 		// Return nil to prevent Asynq retry
 		return nil
 	}
@@ -137,6 +148,12 @@ func (h *SendHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 	successMsg := providerResp.ProviderMessageID
 	h.emailRepo.UpdateStatus(ctx, payload.EmailLogID, currentStatus, email.StatusSent, &successMsg)
 	h.metrics.EmailsSentTotal.WithLabelValues("sent", extractDomain(payload.To)).Inc()
+
+	// Publish email.sent event
+	event := events.EmailSentEvent(payload.EmailLogID, payload.UserID, payload.To)
+	if err := h.eventBus.Publish(ctx, event); err != nil {
+		log.Warn().Err(err).Msg("failed to publish email.sent event")
+	}
 
 	log.Info().
 		Float64("duration_ms", duration*1000).

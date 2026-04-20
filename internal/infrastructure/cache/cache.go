@@ -19,6 +19,7 @@ type Cache interface {
 	GetCredits(ctx context.Context, userID uuid.UUID) (int64, error)
 	DeductCredits(ctx context.Context, userID uuid.UUID, amount int64) (int64, error)
 	AddCredits(ctx context.Context, userID uuid.UUID, amount int64) (int64, error)
+	CheckAndReserveCredits(ctx context.Context, userID uuid.UUID, amount int64) (bool, int64, error)
 
 	// API Key operations
 	GetAPIKey(ctx context.Context, keyHash string) (string, error)

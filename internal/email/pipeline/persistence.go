@@ -6,6 +6,7 @@ import (
 
 	"github.com/Mark-0731/SwiftMail/internal/billing"
 	"github.com/Mark-0731/SwiftMail/internal/infrastructure/cache"
+	"github.com/Mark-0731/SwiftMail/pkg/logger"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 )
@@ -40,6 +41,8 @@ func (s *PersistenceStage) Name() string {
 
 // Execute persists the email log and reserves credits.
 func (s *PersistenceStage) Execute(ctx context.Context, state *State) error {
+	log := logger.FromContext(ctx)
+
 	// 1. Generate message ID
 	state.MessageID = fmt.Sprintf("<%s@swiftmail>", uuid.New().String())
 
@@ -48,7 +51,7 @@ func (s *PersistenceStage) Execute(ctx context.Context, state *State) error {
 	if fromDomain != "" {
 		domainID, err := s.cache.GetDomainID(ctx, state.UserID, fromDomain)
 		if err != nil {
-			s.logger.Warn().Err(err).Str("domain", fromDomain).Msg("failed to get domain ID from cache")
+			log.Warn().Err(err).Str("domain", fromDomain).Msg("failed to get domain ID from cache")
 		} else {
 			state.DomainID = domainID
 		}
@@ -78,17 +81,12 @@ func (s *PersistenceStage) Execute(ctx context.Context, state *State) error {
 
 	state.EmailLogID = emailLog.ID
 
-	// 4. Reserve credit
-	if err := s.creditService.ReserveCreditForSend(ctx, state.UserID, emailLog.ID, 1); err != nil {
-		s.logger.Warn().Err(err).Str("email_id", emailLog.ID.String()).Msg("failed to reserve credit, continuing anyway")
-	} else {
-		state.CreditReserved = true
-	}
-
-	s.logger.Info().
+	// Credit already reserved atomically in validation stage
+	log.Info().
 		Str("email_log_id", emailLog.ID.String()).
 		Str("message_id", state.MessageID).
-		Msg("email log created and credit reserved")
+		Bool("credit_reserved", state.CreditReserved).
+		Msg("email log created")
 
 	return nil
 }

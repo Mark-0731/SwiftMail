@@ -4,25 +4,26 @@ import (
 	"context"
 	"fmt"
 
-	emailservice "github.com/Mark-0731/SwiftMail/internal/email/service"
+	"github.com/Mark-0731/SwiftMail/internal/email/domain"
+	"github.com/Mark-0731/SwiftMail/pkg/logger"
 	"github.com/rs/zerolog"
 )
 
 // SecurityStage handles spam detection, content sanitization, and attachment validation.
 type SecurityStage struct {
-	spamDetector        *emailservice.SpamDetector
-	sanitizer           *emailservice.ContentSanitizer
-	attachmentValidator *emailservice.AttachmentValidator
-	deliverability      *emailservice.DeliverabilityValidator
+	spamDetector        *domain.SpamDetector
+	sanitizer           *domain.ContentSanitizer
+	attachmentValidator *domain.AttachmentValidator
+	deliverability      *domain.DeliverabilityValidator
 	logger              zerolog.Logger
 }
 
 // NewSecurityStage creates a new security stage.
 func NewSecurityStage(
-	spamDetector *emailservice.SpamDetector,
-	sanitizer *emailservice.ContentSanitizer,
-	attachmentValidator *emailservice.AttachmentValidator,
-	deliverability *emailservice.DeliverabilityValidator,
+	spamDetector *domain.SpamDetector,
+	sanitizer *domain.ContentSanitizer,
+	attachmentValidator *domain.AttachmentValidator,
+	deliverability *domain.DeliverabilityValidator,
 	logger zerolog.Logger,
 ) Stage {
 	return &SecurityStage{
@@ -41,6 +42,8 @@ func (s *SecurityStage) Name() string {
 
 // Execute performs security checks.
 func (s *SecurityStage) Execute(ctx context.Context, state *State) error {
+	log := logger.FromContext(ctx)
+
 	// Use rendered content if available, otherwise use original
 	subject := state.RenderedSubject
 	if subject == "" {
@@ -68,7 +71,7 @@ func (s *SecurityStage) Execute(ctx context.Context, state *State) error {
 	state.RenderedText = sanitizedText
 	state.SanitizedHeaders = sanitizedHeaders
 
-	s.logger.Debug().
+	log.Debug().
 		Str("user_id", state.UserID.String()).
 		Bool("html_sanitized", sanitizedHTML != htmlBody).
 		Bool("text_sanitized", sanitizedText != textBody).
@@ -80,7 +83,7 @@ func (s *SecurityStage) Execute(ctx context.Context, state *State) error {
 	state.SpamScore = spamScore.Score
 
 	if spamScore.IsSpam {
-		s.logger.Warn().
+		log.Warn().
 			Str("user_id", state.UserID.String()).
 			Int("spam_score", spamScore.Score).
 			Strs("reasons", spamScore.Reasons).
@@ -89,7 +92,7 @@ func (s *SecurityStage) Execute(ctx context.Context, state *State) error {
 	}
 
 	if spamScore.Score > 40 {
-		s.logger.Warn().
+		log.Warn().
 			Str("user_id", state.UserID.String()).
 			Int("spam_score", spamScore.Score).
 			Strs("reasons", spamScore.Reasons).
@@ -98,9 +101,9 @@ func (s *SecurityStage) Execute(ctx context.Context, state *State) error {
 
 	// 3. Attachment validation
 	if len(state.Attachments) > 0 {
-		serviceAttachments := make([]emailservice.AttachmentData, len(state.Attachments))
+		serviceAttachments := make([]domain.AttachmentData, len(state.Attachments))
 		for i, att := range state.Attachments {
-			serviceAttachments[i] = emailservice.AttachmentData{
+			serviceAttachments[i] = domain.AttachmentData{
 				Filename:    att.Filename,
 				ContentType: att.ContentType,
 				Data:        att.Data,
@@ -110,7 +113,7 @@ func (s *SecurityStage) Execute(ctx context.Context, state *State) error {
 
 		attachmentResult := s.attachmentValidator.ValidateAttachments(serviceAttachments)
 		if !attachmentResult.Valid {
-			s.logger.Warn().
+			log.Warn().
 				Str("user_id", state.UserID.String()).
 				Str("reason", attachmentResult.Reason).
 				Strs("invalid_attachments", attachmentResult.InvalidAttachments).
@@ -118,7 +121,7 @@ func (s *SecurityStage) Execute(ctx context.Context, state *State) error {
 			return fmt.Errorf("attachment validation failed: %s", attachmentResult.Reason)
 		}
 
-		s.logger.Info().
+		log.Info().
 			Str("user_id", state.UserID.String()).
 			Int("attachment_count", attachmentResult.AttachmentCount).
 			Int64("total_size_bytes", attachmentResult.TotalSize).
@@ -133,7 +136,7 @@ func (s *SecurityStage) Execute(ctx context.Context, state *State) error {
 
 	const MaxEmailSize = 25 * 1024 * 1024 // 25MB
 	if totalEmailSize > MaxEmailSize {
-		s.logger.Warn().
+		log.Warn().
 			Str("user_id", state.UserID.String()).
 			Int64("email_size_bytes", totalEmailSize).
 			Int64("max_size_bytes", MaxEmailSize).
@@ -147,18 +150,18 @@ func (s *SecurityStage) Execute(ctx context.Context, state *State) error {
 	if fromDomain != "" {
 		deliverabilityValid, err := s.deliverability.ValidateQuick(ctx, fromDomain)
 		if err != nil {
-			s.logger.Warn().
+			log.Warn().
 				Str("user_id", state.UserID.String()).
 				Str("domain", fromDomain).
 				Err(err).
 				Msg("deliverability validation failed - email may have poor deliverability")
 		} else if !deliverabilityValid {
-			s.logger.Warn().
+			log.Warn().
 				Str("user_id", state.UserID.String()).
 				Str("domain", fromDomain).
 				Msg("no SPF or DKIM records found - email may be rejected by recipients")
 		} else {
-			s.logger.Debug().
+			log.Debug().
 				Str("user_id", state.UserID.String()).
 				Str("domain", fromDomain).
 				Msg("deliverability validation passed")

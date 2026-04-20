@@ -4,19 +4,20 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Mark-0731/SwiftMail/internal/email"
+	"github.com/Mark-0731/SwiftMail/internal/email/repository"
 	"github.com/hibiken/asynq"
 	"github.com/rs/zerolog"
-	"github.com/Mark-0731/SwiftMail/internal/email"
 )
 
 // TrackHandler processes tracking events (open/click).
 type TrackHandler struct {
-	emailRepo email.Repository
+	emailRepo repository.Repository
 	logger    zerolog.Logger
 }
 
 // NewTrackHandler creates a new tracking handler.
-func NewTrackHandler(emailRepo email.Repository, logger zerolog.Logger) *TrackHandler {
+func NewTrackHandler(emailRepo repository.Repository, logger zerolog.Logger) *TrackHandler {
 	return &TrackHandler{emailRepo: emailRepo, logger: logger}
 }
 
@@ -49,12 +50,12 @@ func (h *TrackHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 
 // BounceHandler processes bounce notifications.
 type BounceHandler struct {
-	emailRepo email.Repository
+	emailRepo repository.Repository
 	logger    zerolog.Logger
 }
 
 // NewBounceHandler creates a new bounce handler.
-func NewBounceHandler(emailRepo email.Repository, logger zerolog.Logger) *BounceHandler {
+func NewBounceHandler(emailRepo repository.Repository, logger zerolog.Logger) *BounceHandler {
 	return &BounceHandler{emailRepo: emailRepo, logger: logger}
 }
 

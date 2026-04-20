@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/Mark-0731/SwiftMail/internal/template"
+	"github.com/Mark-0731/SwiftMail/pkg/logger"
 	"github.com/rs/zerolog"
 )
 
@@ -29,6 +30,8 @@ func (s *RenderStage) Name() string {
 
 // Execute performs template rendering.
 func (s *RenderStage) Execute(ctx context.Context, state *State) error {
+	log := logger.FromContext(ctx)
+
 	// If no template ID, use original content
 	if state.TemplateID == nil {
 		state.RenderedSubject = state.Subject
@@ -47,7 +50,7 @@ func (s *RenderStage) Execute(ctx context.Context, state *State) error {
 	state.RenderedHTML = html
 	state.RenderedText = text
 
-	s.logger.Debug().
+	log.Debug().
 		Str("user_id", state.UserID.String()).
 		Str("template_id", state.TemplateID.String()).
 		Msg("template rendered successfully")

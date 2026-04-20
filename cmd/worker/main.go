@@ -10,7 +10,8 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/Mark-0731/SwiftMail/internal/config"
-	"github.com/Mark-0731/SwiftMail/internal/email"
+	emailrepo "github.com/Mark-0731/SwiftMail/internal/email/repository"
+	"github.com/Mark-0731/SwiftMail/internal/events"
 	"github.com/Mark-0731/SwiftMail/internal/provider"
 	smtpengine "github.com/Mark-0731/SwiftMail/internal/smtp"
 	"github.com/Mark-0731/SwiftMail/internal/worker"
@@ -63,7 +64,6 @@ func main() {
 	smtpProvider := provider.NewSMTPProvider(smtpSender, log)
 
 	// Optional: Add SendGrid as fallback for testing
-	// Uncomment and set SENDGRID_API_KEY environment variable to enable
 	var emailProvider provider.Provider = smtpProvider
 	if sendgridKey := os.Getenv("SENDGRID_API_KEY"); sendgridKey != "" {
 		sendgridProvider := provider.NewSendGridProvider(sendgridKey, log)
@@ -73,13 +73,17 @@ func main() {
 		log.Info().Msg("using SMTP provider only")
 	}
 
+	// Initialize event bus
+	eventBus := events.NewRedisBus(rdb, log)
+
 	// Initialize repositories
-	emailRepo := email.NewPostgresRepository(dbPool)
+	emailRepo := emailrepo.NewPostgresRepository(dbPool)
 
 	// Initialize handlers
 	sendHandler := worker.NewSendHandler(
 		emailRepo,
 		emailProvider,
+		eventBus,
 		m,
 		cfg,
 		log,

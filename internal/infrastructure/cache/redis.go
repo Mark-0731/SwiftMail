@@ -109,6 +109,47 @@ func (c *RedisCache) AddCredits(ctx context.Context, userID uuid.UUID, amount in
 	return c.client.IncrBy(ctx, creditKey, amount).Result()
 }
 
+// CheckAndReserveCredits atomically checks and reserves credits (prevents race condition).
+func (c *RedisCache) CheckAndReserveCredits(ctx context.Context, userID uuid.UUID, amount int64) (bool, int64, error) {
+	creditKey := fmt.Sprintf("credits:%s", userID.String())
+
+	// Atomic check-and-reserve using Lua script
+	luaScript := `
+		local balance = redis.call("GET", KEYS[1])
+		if balance == false then
+			return {0, 0}
+		end
+		local current = tonumber(balance)
+		if current < tonumber(ARGV[1]) then
+			return {0, current}
+		end
+		local new_balance = redis.call("DECRBY", KEYS[1], ARGV[1])
+		return {1, new_balance}
+	`
+
+	result, err := c.client.Eval(ctx, luaScript, []string{creditKey}, amount).Int64Slice()
+	if err != nil {
+		return false, 0, fmt.Errorf("check and reserve failed: %w", err)
+	}
+
+	if len(result) != 2 {
+		return false, 0, fmt.Errorf("unexpected result from check and reserve")
+	}
+
+	reserved := result[0] == 1
+	newBalance := result[1]
+
+	if reserved {
+		c.logger.Debug().
+			Str("user_id", userID.String()).
+			Int64("amount", amount).
+			Int64("new_balance", newBalance).
+			Msg("credits reserved atomically")
+	}
+
+	return reserved, newBalance, nil
+}
+
 // GetAPIKey retrieves cached API key data.
 func (c *RedisCache) GetAPIKey(ctx context.Context, keyHash string) (string, error) {
 	apiKeyKey := fmt.Sprintf("apikey:%s", keyHash)

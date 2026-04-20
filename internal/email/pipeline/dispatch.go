@@ -5,21 +5,25 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/Mark-0731/SwiftMail/internal/events"
 	"github.com/Mark-0731/SwiftMail/internal/infrastructure/queue"
+	"github.com/Mark-0731/SwiftMail/pkg/logger"
 	"github.com/rs/zerolog"
 )
 
-// DispatchStage handles queue dispatch.
+// DispatchStage handles queue dispatch and event publishing.
 type DispatchStage struct {
-	queue  queue.Queue
-	logger zerolog.Logger
+	queue    queue.Queue
+	eventBus events.Bus
+	logger   zerolog.Logger
 }
 
 // NewDispatchStage creates a new dispatch stage.
-func NewDispatchStage(queue queue.Queue, logger zerolog.Logger) Stage {
+func NewDispatchStage(queue queue.Queue, eventBus events.Bus, logger zerolog.Logger) Stage {
 	return &DispatchStage{
-		queue:  queue,
-		logger: logger,
+		queue:    queue,
+		eventBus: eventBus,
+		logger:   logger,
 	}
 }
 
@@ -28,8 +32,10 @@ func (s *DispatchStage) Name() string {
 	return "dispatch"
 }
 
-// Execute dispatches the email to the queue.
+// Execute dispatches the email to the queue and publishes event.
 func (s *DispatchStage) Execute(ctx context.Context, state *State) error {
+	log := logger.FromContext(ctx)
+
 	// Build task payload
 	payload := map[string]interface{}{
 		"email_log_id":  state.EmailLogID.String(),
@@ -66,7 +72,14 @@ func (s *DispatchStage) Execute(ctx context.Context, state *State) error {
 		return fmt.Errorf("failed to enqueue email: %w", err)
 	}
 
-	s.logger.Info().
+	// Publish email.queued event
+	event := events.EmailQueuedEvent(state.EmailLogID, state.UserID)
+	if err := s.eventBus.Publish(ctx, event); err != nil {
+		log.Warn().Err(err).Msg("failed to publish email.queued event")
+		// Don't fail the request if event publishing fails
+	}
+
+	log.Info().
 		Str("email_log_id", state.EmailLogID.String()).
 		Str("to", state.To).
 		Str("from", state.From).

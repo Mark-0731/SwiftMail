@@ -14,7 +14,9 @@ import (
 	"github.com/Mark-0731/SwiftMail/internal/billing"
 	"github.com/Mark-0731/SwiftMail/internal/config"
 	"github.com/Mark-0731/SwiftMail/internal/domain"
-	"github.com/Mark-0731/SwiftMail/internal/email"
+	emailhandler "github.com/Mark-0731/SwiftMail/internal/email/handler"
+	emailorchestrator "github.com/Mark-0731/SwiftMail/internal/email/orchestrator"
+	emailrepo "github.com/Mark-0731/SwiftMail/internal/email/repository"
 	"github.com/Mark-0731/SwiftMail/internal/infrastructure/cache"
 	"github.com/Mark-0731/SwiftMail/internal/infrastructure/queue"
 	"github.com/Mark-0731/SwiftMail/internal/server/middleware"
@@ -39,6 +41,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *redis.Client, asynqClient *a
 
 	// ─── Global Middleware ───────────────────────────────────────────────
 	app.Use(recover.New())
+	app.Use(middleware.RequestID())
 	app.Use(middleware.CORS())
 	app.Use(middleware.Logger(logger))
 	app.Use(middleware.Metrics(m))
@@ -53,7 +56,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *redis.Client, asynqClient *a
 	authRepo := auth.NewPostgresRepository(db)
 	domainRepo := domain.NewPostgresRepository(db)
 	templateRepo := tmpl.NewPostgresRepository(db)
-	emailRepo := email.NewPostgresRepository(db)
+	emailRepo := emailrepo.NewPostgresRepository(db)
 	suppressionRepo := suppression.NewPostgresRepository(db)
 	webhookRepo := webhook.NewRepository(db)
 	userRepo := user.NewRepository(db)
@@ -67,7 +70,10 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *redis.Client, asynqClient *a
 	dnsChecker := domain.NewDNSChecker()
 	domainService := domain.NewService(domainRepo, dnsChecker, rdb, logger)
 	templateService := tmpl.NewService(templateRepo, logger)
-	emailService := email.NewService(emailRepo, templateService, cacheAdapter, queueAdapter, logger)
+
+	// Email orchestrator (no service layer)
+	emailOrchestrator := emailorchestrator.NewOrchestrator(emailRepo, templateService, cacheAdapter, queueAdapter, rdb, logger)
+
 	suppressionService := suppression.NewService(suppressionRepo, rdb, logger)
 	webhookDispatcher := webhook.NewDispatcher(webhookRepo, logger)
 	stripeService := billing.NewStripeService(
@@ -88,7 +94,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *redis.Client, asynqClient *a
 	authHandler := auth.NewHandler(authService)
 	domainHandler := domain.NewHandler(domainService)
 	templateHandler := tmpl.NewHandler(templateService)
-	emailHandler := email.NewHandler(emailService)
+	emailHandler := emailhandler.NewHandler(emailOrchestrator, logger)
 	suppressionHandler := suppression.NewHandler(suppressionService)
 	trackingHandler := tracking.NewHandler(asynqClient, rdb, logger)
 	webhookHandler := webhook.NewHandler(webhookRepo, webhookDispatcher)
@@ -133,7 +139,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *redis.Client, asynqClient *a
 	mailGroup.Post("/send", emailHandler.Send)
 
 	// Email log routes
-	email.RegisterRoutes(authenticated, emailHandler)
+	emailhandler.RegisterRoutes(authenticated, emailHandler)
 
 	// Suppression routes
 	suppression.RegisterRoutes(authenticated, suppressionHandler)
