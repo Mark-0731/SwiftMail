@@ -66,6 +66,7 @@ func main() {
 		emailRepo,
 		smtpSender,
 		m,
+		cfg,
 		log,
 	)
 	trackHandler := worker.NewTrackHandler(emailRepo, log)

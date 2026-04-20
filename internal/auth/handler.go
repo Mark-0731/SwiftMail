@@ -3,9 +3,9 @@ package auth
 import (
 	"errors"
 
+	"github.com/Mark-0731/SwiftMail/pkg/response"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	"github.com/Mark-0731/SwiftMail/pkg/response"
 )
 
 // Handler holds auth HTTP handlers.
@@ -193,4 +193,160 @@ func getUserID(c *fiber.Ctx) uuid.UUID {
 		return uuid.Nil
 	}
 	return id
+}
+
+func (h *Handler) RequestPasswordReset(c *fiber.Ctx) error {
+	var req PasswordResetRequest
+	if err := c.BodyParser(&req); err != nil {
+		return response.BadRequest(c, "INVALID_BODY", "Invalid request body")
+	}
+
+	if req.Email == "" {
+		return response.ValidationError(c, "email is required")
+	}
+
+	if err := h.service.RequestPasswordReset(c.Context(), req.Email); err != nil {
+		if errors.Is(err, ErrRateLimitExceeded) {
+			return response.TooManyRequests(c, "Too many reset requests. Please try again later.")
+		}
+		// Don't reveal if email exists - always return success
+	}
+
+	return response.OK(c, PasswordResetResponse{
+		Message: "If the email exists, a password reset link has been sent",
+	})
+}
+
+func (h *Handler) ResetPassword(c *fiber.Ctx) error {
+	var req PasswordResetConfirmRequest
+	if err := c.BodyParser(&req); err != nil {
+		return response.BadRequest(c, "INVALID_BODY", "Invalid request body")
+	}
+
+	if req.Token == "" || req.NewPassword == "" {
+		return response.ValidationError(c, "token and new_password are required")
+	}
+
+	if len(req.NewPassword) < 8 {
+		return response.ValidationError(c, "password must be at least 8 characters")
+	}
+
+	if err := h.service.ResetPassword(c.Context(), req.Token, req.NewPassword); err != nil {
+		if errors.Is(err, ErrInvalidToken) {
+			return response.BadRequest(c, "INVALID_TOKEN", "Invalid or expired reset token")
+		}
+		return response.InternalError(c, "Failed to reset password")
+	}
+
+	return response.OK(c, PasswordResetResponse{
+		Message: "Password reset successful. Please login with your new password.",
+	})
+}
+
+func (h *Handler) VerifyEmail(c *fiber.Ctx) error {
+	var req EmailVerificationRequest
+	if err := c.BodyParser(&req); err != nil {
+		return response.BadRequest(c, "INVALID_BODY", "Invalid request body")
+	}
+
+	if req.Token == "" {
+		return response.ValidationError(c, "token is required")
+	}
+
+	if err := h.service.VerifyEmail(c.Context(), req.Token); err != nil {
+		if errors.Is(err, ErrInvalidToken) {
+			return response.BadRequest(c, "INVALID_TOKEN", "Invalid or expired verification token")
+		}
+		return response.InternalError(c, "Failed to verify email")
+	}
+
+	return response.OK(c, EmailVerificationResponse{
+		Message: "Email verified successfully",
+	})
+}
+
+func (h *Handler) ResendVerificationEmail(c *fiber.Ctx) error {
+	userID := getUserID(c)
+	if userID == uuid.Nil {
+		return response.Unauthorized(c, "Authentication required")
+	}
+
+	if err := h.service.SendVerificationEmail(c.Context(), userID); err != nil {
+		if errors.Is(err, ErrRateLimitExceeded) {
+			return response.TooManyRequests(c, "Too many verification requests. Please try again later.")
+		}
+		return response.InternalError(c, "Failed to send verification email")
+	}
+
+	return response.OK(c, ResendVerificationResponse{
+		Message: "Verification email sent",
+	})
+}
+
+func (h *Handler) RevokeSession(c *fiber.Ctx) error {
+	var req RevokeSessionRequest
+	if err := c.BodyParser(&req); err != nil {
+		return response.BadRequest(c, "INVALID_BODY", "Invalid request body")
+	}
+
+	if req.RefreshToken == "" {
+		return response.ValidationError(c, "refresh_token is required")
+	}
+
+	if err := h.service.RevokeSession(c.Context(), req.RefreshToken); err != nil {
+		if errors.Is(err, ErrInvalidToken) {
+			return response.BadRequest(c, "INVALID_TOKEN", "Invalid refresh token")
+		}
+		return response.InternalError(c, "Failed to revoke session")
+	}
+
+	return response.OK(c, SessionResponse{
+		Message: "Session revoked successfully",
+	})
+}
+
+func (h *Handler) RevokeAllSessions(c *fiber.Ctx) error {
+	userID := getUserID(c)
+	if userID == uuid.Nil {
+		return response.Unauthorized(c, "Authentication required")
+	}
+
+	if err := h.service.RevokeAllSessions(c.Context(), userID); err != nil {
+		return response.InternalError(c, "Failed to revoke sessions")
+	}
+
+	return response.OK(c, SessionResponse{
+		Message: "All sessions revoked successfully",
+	})
+}
+
+func (h *Handler) ChangePassword(c *fiber.Ctx) error {
+	userID := getUserID(c)
+	if userID == uuid.Nil {
+		return response.Unauthorized(c, "Authentication required")
+	}
+
+	var req ChangePasswordRequest
+	if err := c.BodyParser(&req); err != nil {
+		return response.BadRequest(c, "INVALID_BODY", "Invalid request body")
+	}
+
+	if req.CurrentPassword == "" || req.NewPassword == "" {
+		return response.ValidationError(c, "current_password and new_password are required")
+	}
+
+	if len(req.NewPassword) < 8 {
+		return response.ValidationError(c, "new password must be at least 8 characters")
+	}
+
+	if err := h.service.ChangePassword(c.Context(), userID, req.CurrentPassword, req.NewPassword); err != nil {
+		if errors.Is(err, ErrInvalidCredentials) {
+			return response.Unauthorized(c, "Current password is incorrect")
+		}
+		return response.InternalError(c, "Failed to change password")
+	}
+
+	return response.OK(c, ChangePasswordResponse{
+		Message: "Password changed successfully. All sessions have been revoked.",
+	})
 }

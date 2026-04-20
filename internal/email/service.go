@@ -9,13 +9,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Mark-0731/SwiftMail/internal/billing"
+	"github.com/Mark-0731/SwiftMail/internal/template"
+	"github.com/Mark-0731/SwiftMail/pkg/response"
+	"github.com/Mark-0731/SwiftMail/pkg/validator"
 	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
-	"github.com/Mark-0731/SwiftMail/internal/template"
-	"github.com/Mark-0731/SwiftMail/pkg/response"
-	"github.com/Mark-0731/SwiftMail/pkg/validator"
 )
 
 // Service defines the email business logic interface.
@@ -26,11 +27,16 @@ type Service interface {
 }
 
 type service struct {
-	repo        Repository
-	templateSvc template.Service
-	rdb         *redis.Client
-	asynqClient *asynq.Client
-	logger      zerolog.Logger
+	repo                    Repository
+	templateSvc             template.Service
+	rdb                     *redis.Client
+	asynqClient             *asynq.Client
+	logger                  zerolog.Logger
+	spamDetector            *SpamDetector
+	attachmentValidator     *AttachmentValidator
+	contentSanitizer        *ContentSanitizer
+	creditService           *billing.CreditService
+	deliverabilityValidator *DeliverabilityValidator
 }
 
 // NewService creates a new email service.
@@ -42,23 +48,39 @@ func NewService(
 	logger zerolog.Logger,
 ) Service {
 	return &service{
-		repo:        repo,
-		templateSvc: templateSvc,
-		rdb:         rdb,
-		asynqClient: asynqClient,
-		logger:      logger,
+		repo:                    repo,
+		templateSvc:             templateSvc,
+		rdb:                     rdb,
+		asynqClient:             asynqClient,
+		logger:                  logger,
+		spamDetector:            NewSpamDetector(),
+		attachmentValidator:     NewAttachmentValidator(),
+		contentSanitizer:        NewContentSanitizer(),
+		creditService:           billing.NewCreditService(rdb, logger),
+		deliverabilityValidator: NewDeliverabilityValidator(logger),
 	}
 }
 
 // Send is the critical hot path — Redis-first validation, then queue dispatch.
 // Target: < 80ms p99 response time.
 func (s *service) Send(ctx context.Context, userID uuid.UUID, req *SendRequest, idempotencyKey string) (*SendResponse, error) {
-	// 1. Validate email addresses
-	if !validator.IsValidEmail(req.To) {
-		return nil, fmt.Errorf("invalid recipient email: %s", req.To)
+	// 1. Enhanced email validation
+	toValidation := validator.ValidateEmailAdvanced(req.To, false) // Skip MX check for performance
+	if !toValidation.Valid {
+		return nil, fmt.Errorf("invalid recipient email: %s", toValidation.Reason)
 	}
-	if !validator.IsValidEmail(req.From) {
-		return nil, fmt.Errorf("invalid sender email: %s", req.From)
+
+	fromValidation := validator.ValidateEmailAdvanced(req.From, false)
+	if !fromValidation.Valid {
+		return nil, fmt.Errorf("invalid sender email: %s", fromValidation.Reason)
+	}
+
+	// Log warnings for disposable/role-based emails
+	if toValidation.IsDisposable {
+		s.logger.Warn().Str("email", req.To).Msg("sending to disposable email address")
+	}
+	if toValidation.IsRoleBased {
+		s.logger.Info().Str("email", req.To).Msg("sending to role-based email address")
 	}
 
 	// 2. Check suppression list (Redis SISMEMBER — O(1))
@@ -110,30 +132,12 @@ func (s *service) Send(ctx context.Context, userID uuid.UUID, req *SendRequest, 
 		}
 	}()
 
-	// 3. Check and deduct credit atomically (Lua script prevents race condition)
-	creditKey := fmt.Sprintf("credits:%s", userID.String())
-
-	// Atomic check-and-decrement using Lua script
-	luaScript := `
-		local balance = redis.call("GET", KEYS[1])
-		if balance == false then
-			return -2
-		end
-		if tonumber(balance) <= 0 then
-			return -1
-		end
-		return redis.call("DECRBY", KEYS[1], 1)
-	`
-
-	result, err := s.rdb.Eval(ctx, luaScript, []string{creditKey}).Int64()
+	// 3. Check credit availability (but don't deduct yet - reserve for later deduction)
+	hasCredits, currentBalance, err := s.creditService.CheckCreditAvailability(ctx, userID, 1)
 	if err != nil {
-		// Redis error - allow request but log warning
-		s.logger.Warn().Err(err).Msg("credit check failed, allowing request")
-	} else if result == -2 {
-		// No credit record - will be checked in DB later
-		s.logger.Debug().Str("user_id", userID.String()).Msg("no cached credits, will check DB")
-	} else if result == -1 {
-		return nil, fmt.Errorf("insufficient credits")
+		s.logger.Warn().Err(err).Str("user_id", userID.String()).Msg("credit check failed, allowing request")
+	} else if !hasCredits {
+		return nil, fmt.Errorf("insufficient credits (current balance: %d)", currentBalance)
 	}
 
 	// 5. Resolve template if template_id provided
@@ -151,11 +155,102 @@ func (s *service) Send(ctx context.Context, userID uuid.UUID, req *SendRequest, 
 		textBody = text
 	}
 
+	// 5.6. Content sanitization (security)
+	subject, htmlBody, textBody, sanitizedHeaders := s.contentSanitizer.SanitizeAll(subject, htmlBody, textBody, req.Headers)
+
+	s.logger.Debug().
+		Str("user_id", userID.String()).
+		Bool("html_sanitized", htmlBody != req.HTML).
+		Bool("text_sanitized", textBody != req.Text).
+		Bool("subject_sanitized", subject != req.Subject).
+		Msg("content sanitization completed")
+
+	// 5.7. SPF/DKIM validation for deliverability
+	fromDomain := extractDomain(req.From)
+	if fromDomain != "" {
+		// Use quick validation to avoid blocking the send path
+		deliverabilityValid, err := s.deliverabilityValidator.ValidateQuick(ctx, fromDomain)
+		if err != nil {
+			s.logger.Warn().
+				Str("user_id", userID.String()).
+				Str("domain", fromDomain).
+				Err(err).
+				Msg("deliverability validation failed - email may have poor deliverability")
+		} else if !deliverabilityValid {
+			s.logger.Warn().
+				Str("user_id", userID.String()).
+				Str("domain", fromDomain).
+				Msg("no SPF or DKIM records found - email may be rejected by recipients")
+		} else {
+			s.logger.Debug().
+				Str("user_id", userID.String()).
+				Str("domain", fromDomain).
+				Msg("deliverability validation passed")
+		}
+	}
+
+	// 5.8. Spam content detection
+	spamScore := s.spamDetector.AnalyzeContent(subject, htmlBody, textBody)
+	if spamScore.IsSpam {
+		s.logger.Warn().
+			Str("user_id", userID.String()).
+			Int("spam_score", spamScore.Score).
+			Strs("reasons", spamScore.Reasons).
+			Msg("email flagged as spam")
+		return nil, fmt.Errorf("email content flagged as spam (score: %d/100)", spamScore.Score)
+	}
+
+	// Log warning for high spam scores (but not blocking)
+	if spamScore.Score > 40 {
+		s.logger.Warn().
+			Str("user_id", userID.String()).
+			Int("spam_score", spamScore.Score).
+			Strs("reasons", spamScore.Reasons).
+			Msg("email has elevated spam score")
+	}
+
+	// 5.9. Attachment validation
+	if len(req.Attachments) > 0 {
+		attachmentResult := s.attachmentValidator.ValidateAttachments(req.Attachments)
+		if !attachmentResult.Valid {
+			s.logger.Warn().
+				Str("user_id", userID.String()).
+				Str("reason", attachmentResult.Reason).
+				Strs("invalid_attachments", attachmentResult.InvalidAttachments).
+				Msg("attachment validation failed")
+			return nil, fmt.Errorf("attachment validation failed: %s", attachmentResult.Reason)
+		}
+
+		// Log attachment info for monitoring
+		s.logger.Info().
+			Str("user_id", userID.String()).
+			Int("attachment_count", attachmentResult.AttachmentCount).
+			Int64("total_size_bytes", attachmentResult.TotalSize).
+			Msg("attachments validated successfully")
+	}
+
+	// 5.10. Email size validation (prevent SMTP limits exceeded)
+	totalEmailSize := int64(len(subject) + len(htmlBody) + len(textBody))
+	for _, attachment := range req.Attachments {
+		totalEmailSize += attachment.Size
+	}
+
+	const MaxEmailSize = 25 * 1024 * 1024 // 25MB total email size limit (common SMTP limit)
+	if totalEmailSize > MaxEmailSize {
+		s.logger.Warn().
+			Str("user_id", userID.String()).
+			Int64("email_size_bytes", totalEmailSize).
+			Int64("max_size_bytes", MaxEmailSize).
+			Msg("email size exceeds SMTP limits")
+		return nil, fmt.Errorf("email size (%d MB) exceeds maximum allowed size (%d MB)",
+			totalEmailSize/(1024*1024), MaxEmailSize/(1024*1024))
+	}
+
 	// 6. Generate message ID
 	messageID := fmt.Sprintf("<%s@swiftmail>", uuid.New().String())
 
 	// 7. Extract domain from sender for domain lookup
-	fromDomain := extractDomain(req.From)
+	// (fromDomain already extracted above for deliverability validation)
 
 	// Look up domain ID (if domain exists)
 	var domainID *uuid.UUID
@@ -192,18 +287,24 @@ func (s *service) Send(ctx context.Context, userID uuid.UUID, req *SendRequest, 
 		return nil, fmt.Errorf("failed to create email log: %w", err)
 	}
 
+	// 8.5. Reserve credit for this email send
+	if err := s.creditService.ReserveCreditForSend(ctx, userID, emailLog.ID, 1); err != nil {
+		s.logger.Warn().Err(err).Str("email_id", emailLog.ID.String()).Msg("failed to reserve credit, continuing anyway")
+	}
+
 	// 9. Build Asynq task payload
 	payload := map[string]interface{}{
-		"email_log_id": emailLog.ID.String(),
-		"from":         req.From,
-		"to":           req.To,
-		"subject":      subject,
-		"html":         htmlBody,
-		"text":         textBody,
-		"reply_to":     req.ReplyTo,
-		"headers":      req.Headers,
-		"message_id":   messageID,
-		"user_id":      userID.String(),
+		"email_log_id":  emailLog.ID.String(),
+		"from":          req.From,
+		"to":            req.To,
+		"subject":       subject,
+		"html":          htmlBody,
+		"text":          textBody,
+		"reply_to":      req.ReplyTo,
+		"headers":       sanitizedHeaders,
+		"message_id":    messageID,
+		"user_id":       userID.String(),
+		"deduct_credit": true, // Credit will be deducted after successful send
 	}
 
 	payloadBytes, err := json.Marshal(payload)

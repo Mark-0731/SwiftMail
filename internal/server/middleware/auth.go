@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/Mark-0731/SwiftMail/internal/auth"
+	"github.com/Mark-0731/SwiftMail/pkg/response"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
-	"github.com/Mark-0731/SwiftMail/internal/auth"
-	"github.com/Mark-0731/SwiftMail/pkg/response"
 )
 
 // JWTAuth middleware validates JWT tokens from the Authorization header.
@@ -59,6 +59,7 @@ func APIKeyAuth(apiKeyManager *auth.APIKeyManager, rdb *redis.Client, logger zer
 				c.Locals("user_id", data.UserID)
 				c.Locals("user_role", data.Role)
 				c.Locals("api_key_hash", keyHash)
+				c.Locals("api_key_permissions", data.Permissions)
 				return c.Next()
 			}
 		}
@@ -98,6 +99,7 @@ func EitherAuth(jwtManager *auth.JWTManager, apiKeyManager *auth.APIKeyManager, 
 					c.Locals("user_id", data.UserID)
 					c.Locals("user_role", data.Role)
 					c.Locals("api_key_hash", keyHash)
+					c.Locals("api_key_permissions", data.Permissions)
 					return c.Next()
 				}
 			}
@@ -127,4 +129,61 @@ func GetUserID(c *fiber.Ctx) uuid.UUID {
 		return uuid.Nil
 	}
 	return id
+}
+
+// RequirePermission middleware checks if the API key has specific permissions.
+func RequirePermission(permission string) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		// Check if authenticated via API key
+		_, ok := c.Locals("api_key_hash").(string)
+		if !ok {
+			// JWT auth doesn't have permission restrictions
+			return c.Next()
+		}
+
+		// Get permissions from context (set by APIKeyAuth)
+		permissions, ok := c.Locals("api_key_permissions").([]string)
+		if !ok {
+			// No permissions set, deny access
+			return response.Forbidden(c, "API key does not have required permissions")
+		}
+
+		// Check if permission exists
+		for _, p := range permissions {
+			if p == permission || p == "*" {
+				return c.Next()
+			}
+		}
+
+		return response.Forbidden(c, "API key missing permission: "+permission)
+	}
+}
+
+// RequireAnyPermission middleware checks if the API key has any of the specified permissions.
+func RequireAnyPermission(permissions ...string) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		// Check if authenticated via API key
+		_, ok := c.Locals("api_key_hash").(string)
+		if !ok {
+			// JWT auth doesn't have permission restrictions
+			return c.Next()
+		}
+
+		// Get permissions from context
+		apiKeyPerms, ok := c.Locals("api_key_permissions").([]string)
+		if !ok {
+			return response.Forbidden(c, "API key does not have required permissions")
+		}
+
+		// Check if any permission matches
+		for _, required := range permissions {
+			for _, p := range apiKeyPerms {
+				if p == required || p == "*" {
+					return c.Next()
+				}
+			}
+		}
+
+		return response.Forbidden(c, "API key missing required permissions")
+	}
 }

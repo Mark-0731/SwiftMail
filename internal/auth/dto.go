@@ -31,8 +31,8 @@ type TOTPVerifyRequest struct {
 }
 
 type CreateAPIKeyRequest struct {
-	Name        string    `json:"name" validate:"required"`
-	Permissions []string  `json:"permissions,omitempty"`
+	Name        string     `json:"name" validate:"required"`
+	Permissions []string   `json:"permissions,omitempty"`
 	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
 }
 
@@ -63,16 +63,61 @@ type TOTPSetupResponse struct {
 }
 
 type APIKeyResponse struct {
-	ID          uuid.UUID   `json:"id"`
-	Name        string      `json:"name"`
-	KeyPrefix   string      `json:"key_prefix"`
-	Key         string      `json:"key,omitempty"` // Only shown once at creation
-	Permissions []string    `json:"permissions"`
-	LastUsedAt  *time.Time  `json:"last_used_at"`
-	ExpiresAt   *time.Time  `json:"expires_at"`
-	CreatedAt   time.Time   `json:"created_at"`
+	ID          uuid.UUID  `json:"id"`
+	Name        string     `json:"name"`
+	KeyPrefix   string     `json:"key_prefix"`
+	Key         string     `json:"key,omitempty"` // Only shown once at creation
+	Permissions []string   `json:"permissions"`
+	LastUsedAt  *time.Time `json:"last_used_at"`
+	ExpiresAt   *time.Time `json:"expires_at"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 type APIKeyListResponse struct {
 	Keys []APIKeyResponse `json:"keys"`
+}
+type PasswordResetRequest struct {
+	Email string `json:"email" validate:"required,email"`
+}
+
+type PasswordResetConfirmRequest struct {
+	Token       string `json:"token" validate:"required"`
+	NewPassword string `json:"new_password" validate:"required,min=8"`
+}
+
+type PasswordResetResponse struct {
+	Message string `json:"message"`
+}
+
+type EmailVerificationRequest struct {
+	Token string `json:"token" validate:"required"`
+}
+
+type EmailVerificationResponse struct {
+	Message string `json:"message"`
+}
+
+type ResendVerificationRequest struct{}
+
+type ResendVerificationResponse struct {
+	Message string `json:"message"`
+}
+
+type RevokeSessionRequest struct {
+	RefreshToken string `json:"refresh_token" validate:"required"`
+}
+
+type RevokeAllSessionsRequest struct{}
+
+type SessionResponse struct {
+	Message string `json:"message"`
+}
+
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password" validate:"required"`
+	NewPassword     string `json:"new_password" validate:"required,min=8"`
+}
+
+type ChangePasswordResponse struct {
+	Message string `json:"message"`
 }

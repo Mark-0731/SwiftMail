@@ -130,7 +130,8 @@ type StripeConfig struct {
 }
 
 type AppConfig struct {
-	Env string // development, staging, production
+	Env     string // development, staging, production
+	BaseURL string // Base URL for tracking links (e.g., https://api.swiftmail.com)
 }
 
 // Load reads all configuration from environment variables with sensible defaults.
@@ -236,7 +237,8 @@ func loadConfig() *Config {
 			CancelURL:      getEnv("STRIPE_CANCEL_URL", "http://localhost:3000/billing/cancel"),
 		},
 		App: AppConfig{
-			Env: getEnv("APP_ENV", "development"),
+			Env:     getEnv("APP_ENV", "development"),
+			BaseURL: getEnv("APP_BASE_URL", "http://localhost:8080"),
 		},
 	}
 }

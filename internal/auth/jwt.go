@@ -112,3 +112,8 @@ func (j *JWTManager) validateToken(tokenString string, secret []byte) (*Claims, 
 func (j *JWTManager) AccessExpiry() int {
 	return int(j.accessExpiry.Seconds())
 }
+
+// RefreshExpiry returns the refresh token expiry duration.
+func (j *JWTManager) RefreshExpiry() time.Duration {
+	return j.refreshExpiry
+}

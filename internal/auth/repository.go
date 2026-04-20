@@ -20,34 +20,51 @@ type Repository interface {
 	GetAPIKeyByHash(ctx context.Context, keyHash string) (*APIKeyModel, error)
 	DeleteAPIKey(ctx context.Context, id, userID uuid.UUID) error
 	UpdateAPIKeyLastUsed(ctx context.Context, id uuid.UUID) error
+
+	// Password reset
+	CreatePasswordResetToken(ctx context.Context, userID uuid.UUID, tokenHash string, expiresAt time.Time) error
+	GetPasswordResetToken(ctx context.Context, tokenHash string) (*PasswordResetToken, error)
+	MarkPasswordResetTokenUsed(ctx context.Context, tokenHash string) error
+	DeletePasswordResetToken(ctx context.Context, tokenHash string) error
+	UpdatePassword(ctx context.Context, userID uuid.UUID, passwordHash string) error
+
+	// Email verification
+	CreateEmailVerificationToken(ctx context.Context, userID uuid.UUID, tokenHash string, expiresAt time.Time) error
+	GetEmailVerificationToken(ctx context.Context, tokenHash string) (*EmailVerificationToken, error)
+	MarkEmailVerificationTokenUsed(ctx context.Context, tokenHash string) error
+	DeleteEmailVerificationToken(ctx context.Context, tokenHash string) error
+	MarkEmailVerified(ctx context.Context, userID uuid.UUID) error
+
+	// Session management
+	IncrementTokenVersion(ctx context.Context, userID uuid.UUID) error
 }
 
 // UserModel represents a user record in the database.
 type UserModel struct {
-	ID            uuid.UUID  `json:"id"`
-	Email         string     `json:"email"`
-	PasswordHash  string     `json:"-"`
-	Name          string     `json:"name"`
-	Role          string     `json:"role"`
-	TOTPSecret    *string    `json:"-"`
-	TOTPEnabled   bool       `json:"totp_enabled"`
-	EmailVerified bool       `json:"email_verified"`
-	Status        string     `json:"status"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+	ID            uuid.UUID `json:"id"`
+	Email         string    `json:"email"`
+	PasswordHash  string    `json:"-"`
+	Name          string    `json:"name"`
+	Role          string    `json:"role"`
+	TOTPSecret    *string   `json:"-"`
+	TOTPEnabled   bool      `json:"totp_enabled"`
+	EmailVerified bool      `json:"email_verified"`
+	Status        string    `json:"status"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // APIKeyModel represents an API key record in the database.
 type APIKeyModel struct {
-	ID          uuid.UUID   `json:"id"`
-	UserID      uuid.UUID   `json:"user_id"`
-	Name        string      `json:"name"`
-	KeyHash     string      `json:"-"`
-	KeyPrefix   string      `json:"key_prefix"`
-	Permissions []string    `json:"permissions"`
-	LastUsedAt  *time.Time  `json:"last_used_at"`
-	ExpiresAt   *time.Time  `json:"expires_at"`
-	CreatedAt   time.Time   `json:"created_at"`
+	ID          uuid.UUID  `json:"id"`
+	UserID      uuid.UUID  `json:"user_id"`
+	Name        string     `json:"name"`
+	KeyHash     string     `json:"-"`
+	KeyPrefix   string     `json:"key_prefix"`
+	Permissions []string   `json:"permissions"`
+	LastUsedAt  *time.Time `json:"last_used_at"`
+	ExpiresAt   *time.Time `json:"expires_at"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 // PostgresRepository implements Repository with PostgreSQL.
@@ -196,6 +213,128 @@ func (r *PostgresRepository) UpdateAPIKeyLastUsed(ctx context.Context, id uuid.U
 	_, err := r.db.Exec(ctx,
 		`UPDATE api_keys SET last_used_at = NOW() WHERE id = $1`,
 		id,
+	)
+	return err
+}
+
+// PasswordResetToken represents a password reset token.
+type PasswordResetToken struct {
+	ID        uuid.UUID  `json:"id"`
+	UserID    uuid.UUID  `json:"user_id"`
+	TokenHash string     `json:"-"`
+	ExpiresAt time.Time  `json:"expires_at"`
+	UsedAt    *time.Time `json:"used_at"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
+// EmailVerificationToken represents an email verification token.
+type EmailVerificationToken struct {
+	ID        uuid.UUID  `json:"id"`
+	UserID    uuid.UUID  `json:"user_id"`
+	TokenHash string     `json:"-"`
+	ExpiresAt time.Time  `json:"expires_at"`
+	UsedAt    *time.Time `json:"used_at"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
+func (r *PostgresRepository) CreatePasswordResetToken(ctx context.Context, userID uuid.UUID, tokenHash string, expiresAt time.Time) error {
+	_, err := r.db.Exec(ctx,
+		`INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
+		 VALUES ($1, $2, $3)`,
+		userID, tokenHash, expiresAt,
+	)
+	return err
+}
+
+func (r *PostgresRepository) GetPasswordResetToken(ctx context.Context, tokenHash string) (*PasswordResetToken, error) {
+	token := &PasswordResetToken{}
+	err := r.db.QueryRow(ctx,
+		`SELECT id, user_id, token_hash, expires_at, used_at, created_at
+		 FROM password_reset_tokens
+		 WHERE token_hash = $1`,
+		tokenHash,
+	).Scan(&token.ID, &token.UserID, &token.TokenHash, &token.ExpiresAt, &token.UsedAt, &token.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return token, nil
+}
+
+func (r *PostgresRepository) MarkPasswordResetTokenUsed(ctx context.Context, tokenHash string) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE password_reset_tokens SET used_at = NOW() WHERE token_hash = $1`,
+		tokenHash,
+	)
+	return err
+}
+
+func (r *PostgresRepository) DeletePasswordResetToken(ctx context.Context, tokenHash string) error {
+	_, err := r.db.Exec(ctx,
+		`DELETE FROM password_reset_tokens WHERE token_hash = $1`,
+		tokenHash,
+	)
+	return err
+}
+
+func (r *PostgresRepository) UpdatePassword(ctx context.Context, userID uuid.UUID, passwordHash string) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`,
+		passwordHash, userID,
+	)
+	return err
+}
+
+func (r *PostgresRepository) CreateEmailVerificationToken(ctx context.Context, userID uuid.UUID, tokenHash string, expiresAt time.Time) error {
+	_, err := r.db.Exec(ctx,
+		`INSERT INTO email_verification_tokens (user_id, token_hash, expires_at)
+		 VALUES ($1, $2, $3)`,
+		userID, tokenHash, expiresAt,
+	)
+	return err
+}
+
+func (r *PostgresRepository) GetEmailVerificationToken(ctx context.Context, tokenHash string) (*EmailVerificationToken, error) {
+	token := &EmailVerificationToken{}
+	err := r.db.QueryRow(ctx,
+		`SELECT id, user_id, token_hash, expires_at, used_at, created_at
+		 FROM email_verification_tokens
+		 WHERE token_hash = $1`,
+		tokenHash,
+	).Scan(&token.ID, &token.UserID, &token.TokenHash, &token.ExpiresAt, &token.UsedAt, &token.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return token, nil
+}
+
+func (r *PostgresRepository) MarkEmailVerificationTokenUsed(ctx context.Context, tokenHash string) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE email_verification_tokens SET used_at = NOW() WHERE token_hash = $1`,
+		tokenHash,
+	)
+	return err
+}
+
+func (r *PostgresRepository) DeleteEmailVerificationToken(ctx context.Context, tokenHash string) error {
+	_, err := r.db.Exec(ctx,
+		`DELETE FROM email_verification_tokens WHERE token_hash = $1`,
+		tokenHash,
+	)
+	return err
+}
+
+func (r *PostgresRepository) MarkEmailVerified(ctx context.Context, userID uuid.UUID) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE users SET email_verified = TRUE, updated_at = NOW() WHERE id = $1`,
+		userID,
+	)
+	return err
+}
+
+func (r *PostgresRepository) IncrementTokenVersion(ctx context.Context, userID uuid.UUID) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE users SET token_version = COALESCE(token_version, 0) + 1, updated_at = NOW() WHERE id = $1`,
+		userID,
 	)
 	return err
 }

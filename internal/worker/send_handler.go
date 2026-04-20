@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/hibiken/asynq"
-	"github.com/rs/zerolog"
+	"github.com/Mark-0731/SwiftMail/internal/config"
 	"github.com/Mark-0731/SwiftMail/internal/email"
 	smtpengine "github.com/Mark-0731/SwiftMail/internal/smtp"
 	"github.com/Mark-0731/SwiftMail/pkg/metrics"
+	"github.com/Mark-0731/SwiftMail/pkg/tracking"
+	"github.com/hibiken/asynq"
+	"github.com/rs/zerolog"
 )
 
 // SendHandler processes email:send tasks.
@@ -18,6 +20,7 @@ type SendHandler struct {
 	smtpSender *smtpengine.Sender
 	metrics    *metrics.Metrics
 	logger     zerolog.Logger
+	config     *config.Config
 }
 
 // NewSendHandler creates a new send handler.
@@ -25,12 +28,14 @@ func NewSendHandler(
 	emailRepo email.Repository,
 	smtpSender *smtpengine.Sender,
 	m *metrics.Metrics,
+	cfg *config.Config,
 	logger zerolog.Logger,
 ) *SendHandler {
 	return &SendHandler{
 		emailRepo:  emailRepo,
 		smtpSender: smtpSender,
 		metrics:    m,
+		config:     cfg,
 		logger:     logger,
 	}
 }
@@ -68,12 +73,22 @@ func (h *SendHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 		currentStatus = email.StatusProcessing
 	}
 
+	// Apply click tracking and open tracking to HTML content
+	htmlContent := payload.HTML
+	if htmlContent != "" && h.config.App.BaseURL != "" {
+		// Rewrite links for click tracking
+		htmlContent = tracking.RewriteLinks(htmlContent, payload.EmailLogID.String(), h.config.App.BaseURL)
+
+		// Inject open tracking pixel
+		htmlContent = tracking.InjectPixel(htmlContent, payload.EmailLogID.String(), h.config.App.BaseURL)
+	}
+
 	// Send via SMTP engine
 	smtpResponse, err := h.smtpSender.Send(ctx, &smtpengine.SendRequest{
 		From:      payload.From,
 		To:        payload.To,
 		Subject:   payload.Subject,
-		HTML:      payload.HTML,
+		HTML:      htmlContent, // Use modified HTML with tracking
 		Text:      payload.Text,
 		ReplyTo:   payload.ReplyTo,
 		Headers:   payload.Headers,
