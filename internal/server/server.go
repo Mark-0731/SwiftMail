@@ -8,24 +8,42 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 
-	"github.com/Mark-0731/SwiftMail/internal/abuse"
-	"github.com/Mark-0731/SwiftMail/internal/admin"
-	"github.com/Mark-0731/SwiftMail/internal/auth"
-	"github.com/Mark-0731/SwiftMail/internal/billing"
 	"github.com/Mark-0731/SwiftMail/internal/config"
-	"github.com/Mark-0731/SwiftMail/internal/domain"
-	emailhandler "github.com/Mark-0731/SwiftMail/internal/email/handler"
-	emailorchestrator "github.com/Mark-0731/SwiftMail/internal/email/orchestrator"
-	emailrepo "github.com/Mark-0731/SwiftMail/internal/email/repository"
-	"github.com/Mark-0731/SwiftMail/internal/infrastructure/cache"
-	"github.com/Mark-0731/SwiftMail/internal/infrastructure/queue"
+	abuseapp "github.com/Mark-0731/SwiftMail/internal/features/abuse/application"
+	abusehttp "github.com/Mark-0731/SwiftMail/internal/features/abuse/transport/http"
+	adminapp "github.com/Mark-0731/SwiftMail/internal/features/admin/application"
+	admininfra "github.com/Mark-0731/SwiftMail/internal/features/admin/infrastructure"
+	adminhttp "github.com/Mark-0731/SwiftMail/internal/features/admin/transport/http"
+	authapp "github.com/Mark-0731/SwiftMail/internal/features/auth/application"
+	authdomain "github.com/Mark-0731/SwiftMail/internal/features/auth/domain"
+	authinfra "github.com/Mark-0731/SwiftMail/internal/features/auth/infrastructure"
+	authhttp "github.com/Mark-0731/SwiftMail/internal/features/auth/transport/http"
+	billingapp "github.com/Mark-0731/SwiftMail/internal/features/billing/application"
+	billinginfra "github.com/Mark-0731/SwiftMail/internal/features/billing/infrastructure"
+	billinghttp "github.com/Mark-0731/SwiftMail/internal/features/billing/transport/http"
+	domainmgmtapp "github.com/Mark-0731/SwiftMail/internal/features/domainmgmt/application"
+	domainmgmtdomain "github.com/Mark-0731/SwiftMail/internal/features/domainmgmt/domain"
+	domainmgmtinfra "github.com/Mark-0731/SwiftMail/internal/features/domainmgmt/infrastructure"
+	domainmgmthttp "github.com/Mark-0731/SwiftMail/internal/features/domainmgmt/transport/http"
+	emailapp "github.com/Mark-0731/SwiftMail/internal/features/email/application"
+	emailinfra "github.com/Mark-0731/SwiftMail/internal/features/email/infrastructure"
+	emailhttp "github.com/Mark-0731/SwiftMail/internal/features/email/transport/http"
+	suppressionapp "github.com/Mark-0731/SwiftMail/internal/features/suppression/application"
+	suppressioninfra "github.com/Mark-0731/SwiftMail/internal/features/suppression/infrastructure"
+	suppressionhttp "github.com/Mark-0731/SwiftMail/internal/features/suppression/transport/http"
+	tmplapp "github.com/Mark-0731/SwiftMail/internal/features/template/application"
+	tmplinfra "github.com/Mark-0731/SwiftMail/internal/features/template/infrastructure"
+	tmplhttp "github.com/Mark-0731/SwiftMail/internal/features/template/transport/http"
+	trackinghttp "github.com/Mark-0731/SwiftMail/internal/features/tracking/transport/http"
+	userinfra "github.com/Mark-0731/SwiftMail/internal/features/user/infrastructure"
+	warmupapp "github.com/Mark-0731/SwiftMail/internal/features/warmup/application"
+	warmuphttp "github.com/Mark-0731/SwiftMail/internal/features/warmup/transport/http"
+	webhookapp "github.com/Mark-0731/SwiftMail/internal/features/webhook/application"
+	webhookinfra "github.com/Mark-0731/SwiftMail/internal/features/webhook/infrastructure"
+	webhookhttp "github.com/Mark-0731/SwiftMail/internal/features/webhook/transport/http"
+	"github.com/Mark-0731/SwiftMail/internal/platform/cache"
+	"github.com/Mark-0731/SwiftMail/internal/platform/queue"
 	"github.com/Mark-0731/SwiftMail/internal/server/middleware"
-	"github.com/Mark-0731/SwiftMail/internal/suppression"
-	tmpl "github.com/Mark-0731/SwiftMail/internal/template"
-	"github.com/Mark-0731/SwiftMail/internal/tracking"
-	"github.com/Mark-0731/SwiftMail/internal/user"
-	"github.com/Mark-0731/SwiftMail/internal/warmup"
-	"github.com/Mark-0731/SwiftMail/internal/webhook"
 	"github.com/Mark-0731/SwiftMail/pkg/metrics"
 	"github.com/Mark-0731/SwiftMail/pkg/ratelimit"
 )
@@ -47,36 +65,33 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *redis.Client, asynqClient *a
 	app.Use(middleware.Metrics(m))
 
 	// ─── Managers ────────────────────────────────────────────────────────
-	jwtManager := auth.NewJWTManager(cfg.JWT.AccessSecret, cfg.JWT.RefreshSecret, cfg.JWT.AccessExpiry, cfg.JWT.RefreshExpiry)
-	apiKeyManager := auth.NewAPIKeyManager(rdb)
-	totpManager := auth.NewTOTPManager()
+	jwtManager := authdomain.NewJWTManager(cfg.JWT.AccessSecret, cfg.JWT.RefreshSecret, cfg.JWT.AccessExpiry, cfg.JWT.RefreshExpiry)
+	apiKeyManager := authdomain.NewAPIKeyManager(rdb)
+	totpManager := authdomain.NewTOTPManager()
 	rateLimiter := ratelimit.NewTokenBucket(rdb)
 
 	// ─── Repositories ────────────────────────────────────────────────────
-	authRepo := auth.NewPostgresRepository(db)
-	domainRepo := domain.NewPostgresRepository(db)
-	templateRepo := tmpl.NewPostgresRepository(db)
-	emailRepo := emailrepo.NewPostgresRepository(db)
-	suppressionRepo := suppression.NewPostgresRepository(db)
-	webhookRepo := webhook.NewRepository(db)
-	userRepo := user.NewRepository(db)
+	authRepo := authinfra.NewPostgresRepository(db)
+	domainRepo := domainmgmtinfra.NewPostgresRepository(db)
+	templateRepo := tmplinfra.NewPostgresRepository(db)
+	emailRepo := emailinfra.NewPostgresEmailRepository(db)
+	suppressionRepo := suppressioninfra.NewPostgresRepository(db)
+	webhookRepo := webhookinfra.NewRepository(db)
+	userRepo := userinfra.NewRepository(db)
 
 	// ─── Infrastructure Adapters ─────────────────────────────────────────
 	cacheAdapter := cache.NewRedisCache(rdb, logger)
 	queueAdapter := queue.NewAsynqQueue(asynqClient, logger)
 
 	// ─── Services ────────────────────────────────────────────────────────
-	authService := auth.NewService(authRepo, jwtManager, totpManager, apiKeyManager, logger)
-	dnsChecker := domain.NewDNSChecker()
-	domainService := domain.NewService(domainRepo, dnsChecker, rdb, logger)
-	templateService := tmpl.NewService(templateRepo, logger)
+	authService := authapp.NewService(authRepo, jwtManager, totpManager, apiKeyManager, rdb, logger)
+	dnsChecker := domainmgmtdomain.NewDNSChecker()
+	domainService := domainmgmtapp.NewService(domainRepo, dnsChecker, rdb, logger)
+	templateService := tmplapp.NewService(templateRepo, logger)
 
-	// Email orchestrator (no service layer)
-	emailOrchestrator := emailorchestrator.NewOrchestrator(emailRepo, templateService, cacheAdapter, queueAdapter, rdb, logger)
-
-	suppressionService := suppression.NewService(suppressionRepo, rdb, logger)
-	webhookDispatcher := webhook.NewDispatcher(webhookRepo, logger)
-	stripeService := billing.NewStripeService(
+	// Billing services
+	creditService := billingapp.NewCreditService(cacheAdapter, logger)
+	stripeService := billinginfra.NewStripeService(
 		cfg.Stripe.SecretKey,
 		cfg.Stripe.WebhookSecret,
 		cfg.Stripe.PublishableKey,
@@ -86,52 +101,57 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *redis.Client, asynqClient *a
 		cfg.Stripe.CancelURL,
 		logger,
 	)
-	billingService := billing.NewService(db, rdb, stripeService, logger)
-	abuseDetector := abuse.NewDetector(db, rdb, logger)
-	warmupScheduler := warmup.NewScheduler(db, logger)
+	billingService := billingapp.NewService(db, rdb, stripeService, logger)
+
+	// Email orchestrator
+	emailOrchestrator := emailapp.NewOrchestrator(emailRepo, templateService, cacheAdapter, queueAdapter, rdb, creditService, logger)
+
+	suppressionService := suppressionapp.NewService(suppressionRepo, rdb, logger)
+	webhookDispatcher := webhookapp.NewDispatcher(webhookRepo, logger)
+	abuseDetector := abuseapp.NewDetector(db, rdb, logger)
+	warmupScheduler := warmupapp.NewScheduler(db, logger)
+
+	// Admin service with health checker
+	healthChecker := admininfra.NewHealthChecker(db, nil, asynqClient)
+	adminService := adminapp.NewAdminService(userRepo, healthChecker)
 
 	// ─── Handlers ────────────────────────────────────────────────────────
-	authHandler := auth.NewHandler(authService)
-	domainHandler := domain.NewHandler(domainService)
-	templateHandler := tmpl.NewHandler(templateService)
-	emailHandler := emailhandler.NewHandler(emailOrchestrator, logger)
-	suppressionHandler := suppression.NewHandler(suppressionService)
-	trackingHandler := tracking.NewHandler(asynqClient, rdb, logger)
-	webhookHandler := webhook.NewHandler(webhookRepo, webhookDispatcher)
-	billingHandler := billing.NewHandler(billingService)
-	adminHandler := admin.NewHandler(userRepo)
-	abuseHandler := abuse.NewHandler(abuseDetector)
-	warmupHandler := warmup.NewHandler(warmupScheduler)
-
-	// ─── Health ──────────────────────────────────────────────────────────
-	app.Get("/health", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"status": "ok", "service": "swiftmail-api"})
-	})
+	authHandler := authhttp.NewHandler(authService)
+	domainHandler := domainmgmthttp.NewHandler(domainService)
+	templateHandler := tmplhttp.NewHandler(templateService)
+	emailHandler := emailhttp.NewHandler(emailOrchestrator, logger)
+	suppressionHandler := suppressionhttp.NewHandler(suppressionService)
+	trackingHandler := trackinghttp.NewHandler(asynqClient, rdb, logger)
+	webhookHandler := webhookhttp.NewHandler(webhookRepo, webhookDispatcher)
+	billingHandler := billinghttp.NewHandler(billingService)
+	adminHandler := adminhttp.NewHandler(adminService)
+	abuseHandler := abusehttp.NewHandler(abuseDetector)
+	warmupHandler := warmuphttp.NewHandler(warmupScheduler)
 
 	// ─── Public Routes (no auth) ─────────────────────────────────────────
-	tracking.RegisterRoutes(app, trackingHandler)
+	trackinghttp.RegisterRoutes(app, trackingHandler)
 
 	// Stripe webhook (public, no auth)
-	billing.RegisterWebhookRoutes(app, billingHandler)
+	billinghttp.RegisterWebhookRoutes(app, billingHandler)
 
 	// ─── API v1 ──────────────────────────────────────────────────────────
 	v1 := app.Group("/v1")
 
 	// Auth (public)
-	auth.RegisterPublicRoutes(v1, authHandler)
+	authhttp.RegisterPublicRoutes(v1, authHandler)
 
 	// ─── Authenticated Routes ────────────────────────────────────────────
 	authenticated := v1.Group("", middleware.EitherAuth(jwtManager, apiKeyManager, rdb, logger))
 	authenticated.Use(middleware.RateLimit(rateLimiter, cfg.RateLimit.PerSec, cfg.RateLimit.PerDay))
 
 	// Auth (protected)
-	auth.RegisterProtectedRoutes(authenticated, authHandler)
+	authhttp.RegisterProtectedRoutes(authenticated, authHandler)
 
 	// Domain routes
-	domain.RegisterRoutes(authenticated, domainHandler)
+	domainmgmthttp.RegisterRoutes(authenticated, domainHandler)
 
 	// Template routes
-	tmpl.RegisterRoutes(authenticated, templateHandler)
+	tmplhttp.RegisterRoutes(authenticated, templateHandler)
 
 	// Email send (with idempotency middleware)
 	mailGroup := authenticated.Group("/mail")
@@ -139,22 +159,22 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *redis.Client, asynqClient *a
 	mailGroup.Post("/send", emailHandler.Send)
 
 	// Email log routes
-	emailhandler.RegisterRoutes(authenticated, emailHandler)
+	emailhttp.RegisterRoutes(authenticated, emailHandler)
 
 	// Suppression routes
-	suppression.RegisterRoutes(authenticated, suppressionHandler)
+	suppressionhttp.RegisterRoutes(authenticated, suppressionHandler)
 
 	// Webhook routes
-	webhook.RegisterRoutes(authenticated, webhookHandler)
+	webhookhttp.RegisterRoutes(authenticated, webhookHandler)
 
 	// Billing routes
-	billing.RegisterRoutes(authenticated, billingHandler)
+	billinghttp.RegisterRoutes(authenticated, billingHandler)
 
 	// ─── Admin (owner only) ──────────────────────────────────────────────
 	adminGroup := v1.Group("", middleware.JWTAuth(jwtManager, logger), middleware.RequireRole("owner"))
-	admin.RegisterRoutes(adminGroup, adminHandler)
-	abuse.RegisterRoutes(adminGroup, abuseHandler)
-	warmup.RegisterRoutes(adminGroup, warmupHandler)
+	adminhttp.RegisterRoutes(adminGroup, adminHandler)
+	abusehttp.RegisterRoutes(adminGroup, abuseHandler)
+	warmuphttp.RegisterRoutes(adminGroup, warmupHandler)
 
 	return app
 }

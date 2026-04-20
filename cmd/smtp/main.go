@@ -10,9 +10,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/Mark-0731/SwiftMail/internal/auth"
 	"github.com/Mark-0731/SwiftMail/internal/config"
-	"github.com/Mark-0731/SwiftMail/internal/smtprelay"
+	"github.com/Mark-0731/SwiftMail/internal/features/auth/domain"
+	"github.com/Mark-0731/SwiftMail/internal/features/auth/infrastructure"
+	"github.com/Mark-0731/SwiftMail/internal/platform/smtprelay"
 	"github.com/Mark-0731/SwiftMail/pkg/logger"
 )
 
@@ -49,8 +50,8 @@ func main() {
 	defer asynqClient.Close()
 
 	// Initialize auth components
-	authRepo := auth.NewPostgresRepository(dbPool)
-	apiKeyMgr := auth.NewAPIKeyManager(rdb)
+	authRepo := infrastructure.NewPostgresRepository(dbPool)
+	apiKeyMgr := domain.NewAPIKeyManager(rdb)
 
 	// Create SMTP backend
 	backend := smtprelay.NewBackend(dbPool, rdb, asynqClient, authRepo, apiKeyMgr, log)

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/Mark-0731/SwiftMail/internal/auth"
+	authdomain "github.com/Mark-0731/SwiftMail/internal/features/auth/domain"
 	"github.com/Mark-0731/SwiftMail/pkg/response"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -13,7 +13,7 @@ import (
 )
 
 // JWTAuth middleware validates JWT tokens from the Authorization header.
-func JWTAuth(jwtManager *auth.JWTManager, logger zerolog.Logger) fiber.Handler {
+func JWTAuth(jwtManager *authdomain.JWTManager, logger zerolog.Logger) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		header := c.Get("Authorization")
 		if header == "" {
@@ -39,7 +39,7 @@ func JWTAuth(jwtManager *auth.JWTManager, logger zerolog.Logger) fiber.Handler {
 }
 
 // APIKeyAuth middleware validates API keys from the X-API-Key header.
-func APIKeyAuth(apiKeyManager *auth.APIKeyManager, rdb *redis.Client, logger zerolog.Logger) fiber.Handler {
+func APIKeyAuth(apiKeyManager *authdomain.APIKeyManager, rdb *redis.Client, logger zerolog.Logger) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		apiKey := c.Get("X-API-Key")
 		if apiKey == "" {
@@ -51,7 +51,7 @@ func APIKeyAuth(apiKeyManager *auth.APIKeyManager, rdb *redis.Client, logger zer
 		// Check Redis cache first (hot path — zero DB hit)
 		cached, err := apiKeyManager.GetCachedAPIKey(c.Context(), keyHash)
 		if err == nil && cached != "" {
-			var data auth.CachedAPIKeyData
+			var data authdomain.CachedAPIKeyData
 			if err := json.Unmarshal([]byte(cached), &data); err == nil {
 				if data.Status != "active" {
 					return response.Forbidden(c, "Account is suspended")
@@ -70,7 +70,7 @@ func APIKeyAuth(apiKeyManager *auth.APIKeyManager, rdb *redis.Client, logger zer
 }
 
 // EitherAuth middleware accepts either JWT or API key authentication.
-func EitherAuth(jwtManager *auth.JWTManager, apiKeyManager *auth.APIKeyManager, rdb *redis.Client, logger zerolog.Logger) fiber.Handler {
+func EitherAuth(jwtManager *authdomain.JWTManager, apiKeyManager *authdomain.APIKeyManager, rdb *redis.Client, logger zerolog.Logger) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		// Try JWT first
 		if header := c.Get("Authorization"); header != "" {
@@ -91,7 +91,7 @@ func EitherAuth(jwtManager *auth.JWTManager, apiKeyManager *auth.APIKeyManager, 
 			keyHash := apiKeyManager.HashAPIKey(apiKey)
 			cached, err := apiKeyManager.GetCachedAPIKey(c.Context(), keyHash)
 			if err == nil && cached != "" {
-				var data auth.CachedAPIKeyData
+				var data authdomain.CachedAPIKeyData
 				if err := json.Unmarshal([]byte(cached), &data); err == nil {
 					if data.Status != "active" {
 						return response.Forbidden(c, "Account is suspended")

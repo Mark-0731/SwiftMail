@@ -10,11 +10,11 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/Mark-0731/SwiftMail/internal/config"
-	emailrepo "github.com/Mark-0731/SwiftMail/internal/email/repository"
-	"github.com/Mark-0731/SwiftMail/internal/events"
-	"github.com/Mark-0731/SwiftMail/internal/provider"
-	smtpengine "github.com/Mark-0731/SwiftMail/internal/smtp"
-	"github.com/Mark-0731/SwiftMail/internal/worker"
+	emailrepo "github.com/Mark-0731/SwiftMail/internal/features/email/infrastructure"
+	"github.com/Mark-0731/SwiftMail/internal/platform/provider"
+	smtpengine "github.com/Mark-0731/SwiftMail/internal/platform/smtp"
+	"github.com/Mark-0731/SwiftMail/internal/platform/worker"
+	"github.com/Mark-0731/SwiftMail/internal/shared/events"
 	"github.com/Mark-0731/SwiftMail/pkg/logger"
 	"github.com/Mark-0731/SwiftMail/pkg/metrics"
 )
@@ -77,7 +77,7 @@ func main() {
 	eventBus := events.NewRedisBus(rdb, log)
 
 	// Initialize repositories
-	emailRepo := emailrepo.NewPostgresRepository(dbPool)
+	emailRepo := emailrepo.NewPostgresEmailRepository(dbPool)
 
 	// Initialize handlers
 	sendHandler := worker.NewSendHandler(

@@ -17,8 +17,8 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/Mark-0731/SwiftMail/internal/config"
+	warmup "github.com/Mark-0731/SwiftMail/internal/features/warmup/application"
 	"github.com/Mark-0731/SwiftMail/internal/server"
-	"github.com/Mark-0731/SwiftMail/internal/warmup"
 	"github.com/Mark-0731/SwiftMail/pkg/logger"
 	"github.com/Mark-0731/SwiftMail/pkg/metrics"
 )
