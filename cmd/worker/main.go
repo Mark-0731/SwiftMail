@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -12,6 +13,8 @@ import (
 	"github.com/Mark-0731/SwiftMail/internal/config"
 	emailrepo "github.com/Mark-0731/SwiftMail/internal/features/email/infrastructure"
 	"github.com/Mark-0731/SwiftMail/internal/platform/provider"
+	"github.com/Mark-0731/SwiftMail/internal/platform/queue"
+	"github.com/Mark-0731/SwiftMail/internal/platform/resilience"
 	smtpengine "github.com/Mark-0731/SwiftMail/internal/platform/smtp"
 	"github.com/Mark-0731/SwiftMail/internal/platform/worker"
 	"github.com/Mark-0731/SwiftMail/internal/shared/events"
@@ -79,6 +82,27 @@ func main() {
 	// Initialize repositories
 	emailRepo := emailrepo.NewPostgresEmailRepository(dbPool)
 
+	// Initialize Dead Letter Queue
+	dlq := queue.NewDeadLetterQueue(dbPool, 30*24*time.Hour, log) // 30 days retention
+
+	// Start DLQ cleanup worker (runs daily)
+	go dlq.StartCleanupWorker(ctx, 24*time.Hour)
+
+	// Initialize resilience components (required by SendHandler)
+	circuitBreakerMgr := resilience.NewCircuitBreakerManager(
+		resilience.DefaultCircuitBreakerConfig(),
+		dbPool,
+		log,
+	)
+	adaptiveRetryEngine := resilience.NewAdaptiveRetryEngine(dbPool, log)
+	poisonQueue := resilience.NewPoisonQueue(dbPool, log)
+	backpressureController := resilience.NewBackpressureController(
+		cfg.Worker.Concurrency,   // maxConcurrency
+		cfg.Worker.Concurrency/2, // minConcurrency
+		10000,                    // maxQueueDepth
+		log,
+	)
+
 	// Initialize handlers
 	sendHandler := worker.NewSendHandler(
 		emailRepo,
@@ -87,6 +111,12 @@ func main() {
 		m,
 		cfg,
 		log,
+		dlq,
+		rdb,
+		circuitBreakerMgr,
+		adaptiveRetryEngine,
+		poisonQueue,
+		backpressureController,
 	)
 	trackHandler := worker.NewTrackHandler(emailRepo, log)
 	bounceHandler := worker.NewBounceHandler(emailRepo, log)

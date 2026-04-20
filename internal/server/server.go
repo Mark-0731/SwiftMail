@@ -36,6 +36,8 @@ import (
 	tmplhttp "github.com/Mark-0731/SwiftMail/internal/features/template/transport/http"
 	trackinghttp "github.com/Mark-0731/SwiftMail/internal/features/tracking/transport/http"
 	userinfra "github.com/Mark-0731/SwiftMail/internal/features/user/infrastructure"
+	verificationapp "github.com/Mark-0731/SwiftMail/internal/features/verification/application"
+	verificationinfra "github.com/Mark-0731/SwiftMail/internal/features/verification/infrastructure"
 	warmupapp "github.com/Mark-0731/SwiftMail/internal/features/warmup/application"
 	warmuphttp "github.com/Mark-0731/SwiftMail/internal/features/warmup/transport/http"
 	webhookapp "github.com/Mark-0731/SwiftMail/internal/features/webhook/application"
@@ -78,13 +80,18 @@ func New(cfg *config.Config, db *pgxpool.Pool, rdb *redis.Client, asynqClient *a
 	suppressionRepo := suppressioninfra.NewPostgresRepository(db)
 	webhookRepo := webhookinfra.NewRepository(db)
 	userRepo := userinfra.NewRepository(db)
+	verificationRepo := verificationinfra.NewPostgresRepository(db)
 
 	// ─── Infrastructure Adapters ─────────────────────────────────────────
 	cacheAdapter := cache.NewRedisCache(rdb, logger)
 	queueAdapter := queue.NewAsynqQueue(asynqClient, logger)
 
 	// ─── Services ────────────────────────────────────────────────────────
-	authService := authapp.NewService(authRepo, jwtManager, totpManager, apiKeyManager, rdb, logger)
+	// Verification service (independent)
+	verificationService := verificationapp.NewService(verificationRepo, queueAdapter, rdb, logger)
+
+	// Auth service (depends on verification service)
+	authService := authapp.NewService(authRepo, jwtManager, totpManager, apiKeyManager, rdb, logger, verificationService)
 	dnsChecker := domainmgmtdomain.NewDNSChecker()
 	domainService := domainmgmtapp.NewService(domainRepo, dnsChecker, rdb, logger)
 	templateService := tmplapp.NewService(templateRepo, logger)
