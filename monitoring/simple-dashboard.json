@@ -1,0 +1,146 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "SwiftMail - Email & DLQ Monitoring",
+    "tags": ["swiftmail", "email", "dlq"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Email Processing Rate",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "rate(swiftmail_emails_sent_total[1m])",
+            "legendFormat": "{{status}}",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "dfjtop5s2am0wd"
+            }
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 0
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "displayMode": "list",
+              "orientation": "horizontal"
+            },
+            "mappings": [],
+            "thresholds": {
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Total Emails by Status",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "swiftmail_emails_sent_total",
+            "legendFormat": "{{status}}",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "dfjtop5s2am0wd"
+            }
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 0
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "displayMode": "list",
+              "orientation": "horizontal"
+            },
+            "mappings": [],
+            "thresholds": {
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Email Delivery Duration",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, rate(swiftmail_email_delivery_duration_seconds_bucket[5m]))",
+            "legendFormat": "p50",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "dfjtop5s2am0wd"
+            }
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(swiftmail_email_delivery_duration_seconds_bucket[5m]))",
+            "legendFormat": "p95",
+            "refId": "B",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "dfjtop5s2am0wd"
+            }
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 24,
+          "x": 0,
+          "y": 8
+        },
+        "yAxes": [
+          {
+            "label": "Duration (seconds)",
+            "show": true
+          },
+          {
+            "show": true
+          }
+        ],
+        "xAxis": {
+          "show": true
+        },
+        "legend": {
+          "show": true
+        }
+      }
+    ],
+    "time": {
+      "from": "now-5m",
+      "to": "now"
+    },
+    "refresh": "5s"
+  },
+  "overwrite": true
+}

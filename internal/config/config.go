@@ -18,6 +18,7 @@ type Config struct {
 	MinIO         MinIOConfig
 	JWT           JWTConfig
 	SMTP          SMTPConfig
+	SendGrid      SendGridConfig
 	Worker        WorkerConfig
 	RateLimit     RateLimitConfig
 	Observability ObservabilityConfig
@@ -97,6 +98,10 @@ type SMTPConfig struct {
 	MaxConnUses    int
 	EnableRetries  bool // Enable application-level retries (disable if using Postfix/relay that handles retries)
 	MaxRetries     int  // Maximum retry attempts for temporary failures
+}
+
+type SendGridConfig struct {
+	APIKey string
 }
 
 type WorkerConfig struct {
@@ -209,6 +214,9 @@ func loadConfig() *Config {
 			MaxConnUses:    getIntEnv("SMTP_MAX_CONN_USES", 500),
 			EnableRetries:  getBoolEnv("SMTP_ENABLE_RETRIES", false), // Default OFF for Postfix/relay
 			MaxRetries:     getIntEnv("SMTP_MAX_RETRIES", 3),
+		},
+		SendGrid: SendGridConfig{
+			APIKey: getEnv("SENDGRID_API_KEY", ""),
 		},
 		Worker: WorkerConfig{
 			Concurrency:     getIntEnv("WORKER_CONCURRENCY", 50),

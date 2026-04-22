@@ -118,7 +118,8 @@ func main() {
 	// Start Prometheus metrics server
 	go func() {
 		mux := http.NewServeMux()
-		mux.Handle("/metrics", promhttp.Handler())
+		// Use custom registry to avoid metric duplication errors
+		mux.Handle("/metrics", promhttp.HandlerFor(m.Registry, promhttp.HandlerOpts{}))
 		addr := fmt.Sprintf(":%s", cfg.Observability.PrometheusPort)
 		log.Info().Str("addr", addr).Msg("starting Prometheus metrics server")
 		if err := http.ListenAndServe(addr, mux); err != nil {

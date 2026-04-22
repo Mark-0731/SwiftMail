@@ -84,7 +84,12 @@ func (a *repositoryAdapter) Create(ctx context.Context, model *pipeline.EmailMod
 		MaxRetries:     model.MaxRetries,
 		IdempotencyKey: model.IdempotencyKey,
 	}
-	return a.repo.Create(ctx, emailModel)
+	if err := a.repo.Create(ctx, emailModel); err != nil {
+		return err
+	}
+	// Copy the generated ID back to the pipeline model
+	model.ID = emailModel.ID
+	return nil
 }
 
 // Send orchestrates email sending through the pipeline.

@@ -1,0 +1,319 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "8aae2e5a-4ebe-46e7-ae7d-e5fea79b1bc9",
+    "title": "SwiftMail - API Response Time Monitoring",
+    "tags": ["swiftmail", "api", "latency"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Login API Response Time (ms)",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(swiftmail_api_request_duration_seconds_bucket{path=\"/v1/auth/login\"}[1m])) by (le)) * 1000",
+            "legendFormat": "p50",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "dfjtop5s2am0wd"
+            }
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(swiftmail_api_request_duration_seconds_bucket{path=\"/v1/auth/login\"}[1m])) by (le)) * 1000",
+            "legendFormat": "p95",
+            "refId": "B",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "dfjtop5s2am0wd"
+            }
+          },
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(swiftmail_api_request_duration_seconds_bucket{path=\"/v1/auth/login\"}[1m])) by (le)) * 1000",
+            "legendFormat": "p99",
+            "refId": "C",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "dfjtop5s2am0wd"
+            }
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 0
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "lineWidth": 2,
+              "fillOpacity": 10,
+              "showPoints": "auto"
+            },
+            "unit": "ms"
+          }
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom"
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Register API Response Time (ms)",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(swiftmail_api_request_duration_seconds_bucket{path=\"/v1/auth/register\"}[1m])) by (le)) * 1000",
+            "legendFormat": "p50",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "dfjtop5s2am0wd"
+            }
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(swiftmail_api_request_duration_seconds_bucket{path=\"/v1/auth/register\"}[1m])) by (le)) * 1000",
+            "legendFormat": "p95",
+            "refId": "B",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "dfjtop5s2am0wd"
+            }
+          },
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(swiftmail_api_request_duration_seconds_bucket{path=\"/v1/auth/register\"}[1m])) by (le)) * 1000",
+            "legendFormat": "p99",
+            "refId": "C",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "dfjtop5s2am0wd"
+            }
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 0
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "lineWidth": 2,
+              "fillOpacity": 10,
+              "showPoints": "auto"
+            },
+            "unit": "ms"
+          }
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom"
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Get Profile API Response Time (ms)",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(swiftmail_api_request_duration_seconds_bucket{path=\"/v1/auth/me\"}[1m])) by (le)) * 1000",
+            "legendFormat": "p50",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "dfjtop5s2am0wd"
+            }
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(swiftmail_api_request_duration_seconds_bucket{path=\"/v1/auth/me\"}[1m])) by (le)) * 1000",
+            "legendFormat": "p95",
+            "refId": "B",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "dfjtop5s2am0wd"
+            }
+          },
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(swiftmail_api_request_duration_seconds_bucket{path=\"/v1/auth/me\"}[1m])) by (le)) * 1000",
+            "legendFormat": "p99",
+            "refId": "C",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "dfjtop5s2am0wd"
+            }
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 8
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "lineWidth": 2,
+              "fillOpacity": 10,
+              "showPoints": "auto"
+            },
+            "unit": "ms"
+          }
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom"
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Send Mail API Response Time (ms)",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(swiftmail_api_request_duration_seconds_bucket{path=\"/v1/mail/send\"}[1m])) by (le)) * 1000",
+            "legendFormat": "p50",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "dfjtop5s2am0wd"
+            }
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(swiftmail_api_request_duration_seconds_bucket{path=\"/v1/mail/send\"}[1m])) by (le)) * 1000",
+            "legendFormat": "p95",
+            "refId": "B",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "dfjtop5s2am0wd"
+            }
+          },
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(swiftmail_api_request_duration_seconds_bucket{path=\"/v1/mail/send\"}[1m])) by (le)) * 1000",
+            "legendFormat": "p99",
+            "refId": "C",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "dfjtop5s2am0wd"
+            }
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 8
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "lineWidth": 2,
+              "fillOpacity": 10,
+              "showPoints": "auto"
+            },
+            "unit": "ms"
+          }
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom"
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "All API Endpoints - Response Time Comparison (ms)",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(swiftmail_api_request_duration_seconds_bucket[1m])) by (le, path)) * 1000",
+            "legendFormat": "p50 - {{path}}",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "dfjtop5s2am0wd"
+            }
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(swiftmail_api_request_duration_seconds_bucket[1m])) by (le, path)) * 1000",
+            "legendFormat": "p95 - {{path}}",
+            "refId": "B",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "dfjtop5s2am0wd"
+            }
+          }
+        ],
+        "gridPos": {
+          "h": 9,
+          "w": 24,
+          "x": 0,
+          "y": 16
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "lineWidth": 2,
+              "fillOpacity": 5,
+              "showPoints": "auto"
+            },
+            "unit": "ms"
+          }
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "table",
+            "placement": "right",
+            "calcs": ["lastNotNull", "mean", "max"]
+          }
+        }
+      }
+    ],
+    "time": {
+      "from": "now-5m",
+      "to": "now"
+    },
+    "refresh": "5s"
+  },
+  "overwrite": true
+}

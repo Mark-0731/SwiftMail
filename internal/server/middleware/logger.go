@@ -4,10 +4,10 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Mark-0731/SwiftMail/pkg/metrics"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
-	"github.com/Mark-0731/SwiftMail/pkg/metrics"
 )
 
 // Logger middleware logs all requests with zerolog.
@@ -42,12 +42,14 @@ func Metrics(m *metrics.Metrics) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		start := time.Now()
 
+		// Capture method and path BEFORE c.Next()
+		method := c.Method()
+		path := c.Path() // Use actual request path
+
 		err := c.Next()
 
 		duration := time.Since(start).Seconds()
 		status := strconv.Itoa(c.Response().StatusCode())
-		method := c.Method()
-		path := c.Route().Path // Use route pattern, not actual path
 
 		m.APIRequestsTotal.WithLabelValues(method, path, status).Inc()
 		m.APIRequestDuration.WithLabelValues(method, path).Observe(duration)

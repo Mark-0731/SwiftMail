@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 
 	"github.com/Mark-0731/SwiftMail/internal/config"
@@ -48,6 +50,18 @@ func main() {
 
 	// Initialize metrics
 	m := metrics.NewMetrics()
+
+	// Start Prometheus metrics server for worker
+	go func() {
+		mux := http.NewServeMux()
+		// Use custom registry to match API server
+		mux.Handle("/metrics", promhttp.HandlerFor(m.Registry, promhttp.HandlerOpts{}))
+		addr := ":9092" // Worker metrics on port 9092
+		log.Info().Str("addr", addr).Msg("starting worker Prometheus metrics server")
+		if err := http.ListenAndServe(addr, mux); err != nil {
+			log.Error().Err(err).Msg("worker metrics server error")
+		}
+	}()
 
 	// Initialize SMTP connection pool
 	smtpPool, err := smtpengine.NewPool(&cfg.SMTP, log)
