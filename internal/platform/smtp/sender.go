@@ -3,11 +3,12 @@ package smtp
 import (
 	"context"
 	"fmt"
+	"time"
 
-	"github.com/rs/zerolog"
 	"github.com/Mark-0731/SwiftMail/pkg/dkim"
 	"github.com/Mark-0731/SwiftMail/pkg/mailer"
 	"github.com/Mark-0731/SwiftMail/pkg/metrics"
+	"github.com/rs/zerolog"
 )
 
 // SendRequest is the input for SMTP sending.
@@ -47,10 +48,13 @@ func NewSender(pool *Pool, cb *CircuitBreaker, mx *MXResolver, m *metrics.Metric
 
 // Send delivers an email via the SMTP connection pool.
 func (s *Sender) Send(ctx context.Context, req *SendRequest) (string, error) {
+	startTime := time.Now()
 	recipientDomain := isRecipientDomain(req.To)
 
 	// Check circuit breaker for destination domain
+	cbStart := time.Now()
 	allowed, err := s.circuitBreaker.AllowSend(ctx, recipientDomain)
+	cbDuration := time.Since(cbStart).Milliseconds()
 	if err != nil {
 		s.logger.Warn().Err(err).Str("domain", recipientDomain).Msg("circuit breaker check failed")
 	}
@@ -59,6 +63,7 @@ func (s *Sender) Send(ctx context.Context, req *SendRequest) (string, error) {
 	}
 
 	// Compose MIME message
+	composeStart := time.Now()
 	msg := &mailer.Message{
 		From:      req.From,
 		To:        req.To,
@@ -71,11 +76,14 @@ func (s *Sender) Send(ctx context.Context, req *SendRequest) (string, error) {
 	}
 
 	mimeBytes, err := mailer.Compose(msg)
+	composeDuration := time.Since(composeStart).Milliseconds()
 	if err != nil {
 		return "", fmt.Errorf("failed to compose MIME message: %w", err)
 	}
 
 	// Apply DKIM signature if credentials provided
+	dkimStart := time.Now()
+	dkimDuration := int64(0)
 	if req.DKIMSelector != "" && req.DKIMDomain != "" && len(req.DKIMKey) > 0 {
 		privateKey, err := dkim.ParsePrivateKey(req.DKIMKey)
 		if err != nil {
@@ -97,16 +105,23 @@ func (s *Sender) Send(ctx context.Context, req *SendRequest) (string, error) {
 				mimeBytes = append([]byte(dkimHeader+"\r\n"), mimeBytes...)
 			}
 		}
+		dkimDuration = time.Since(dkimStart).Milliseconds()
 	}
 
 	// Get connection from pool
+	poolGetStart := time.Now()
 	conn, err := s.pool.Get()
+	poolGetDuration := time.Since(poolGetStart).Milliseconds()
 	if err != nil {
 		return "", fmt.Errorf("failed to get SMTP connection: %w", err)
 	}
 
 	// Send
+	smtpSendStart := time.Now()
 	sendErr := conn.SendMail(req.From, req.To, mimeBytes)
+	smtpSendDuration := time.Since(smtpSendStart).Milliseconds()
+
+	totalDuration := time.Since(startTime).Milliseconds()
 
 	if sendErr != nil {
 		// Return bad connection, don't put back in pool
@@ -114,6 +129,17 @@ func (s *Sender) Send(ctx context.Context, req *SendRequest) (string, error) {
 		s.circuitBreaker.RecordFailure(ctx, recipientDomain)
 
 		s.metrics.EmailsSentTotal.WithLabelValues("error", recipientDomain).Inc()
+
+		s.logger.Error().
+			Str("to", req.To).
+			Int64("total_ms", totalDuration).
+			Int64("circuit_breaker_ms", cbDuration).
+			Int64("compose_ms", composeDuration).
+			Int64("dkim_ms", dkimDuration).
+			Int64("pool_get_ms", poolGetDuration).
+			Int64("smtp_send_ms", smtpSendDuration).
+			Err(sendErr).
+			Msg("SMTP send timing breakdown (failed)")
 
 		smtpCode := extractSMTPCode(sendErr)
 		return smtpCode + " " + sendErr.Error(), sendErr
@@ -123,6 +149,16 @@ func (s *Sender) Send(ctx context.Context, req *SendRequest) (string, error) {
 	s.pool.Put(conn)
 	s.circuitBreaker.RecordSuccess(ctx, recipientDomain)
 	s.metrics.SMTPPoolReuseTotal.Inc()
+
+	s.logger.Info().
+		Str("to", req.To).
+		Int64("total_ms", totalDuration).
+		Int64("circuit_breaker_ms", cbDuration).
+		Int64("compose_ms", composeDuration).
+		Int64("dkim_ms", dkimDuration).
+		Int64("pool_get_ms", poolGetDuration).
+		Int64("smtp_send_ms", smtpSendDuration).
+		Msg("SMTP send timing breakdown (success)")
 
 	return "250 OK", nil
 }

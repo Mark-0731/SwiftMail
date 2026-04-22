@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/rs/zerolog"
 	"github.com/Mark-0731/SwiftMail/internal/config"
+	"github.com/rs/zerolog"
 )
 
 // Pool manages a pool of SMTP connections for high-throughput delivery.
@@ -370,32 +370,58 @@ func (c *Connection) SendMail(from string, to string, msg []byte) error {
 		return fmt.Errorf("connection is not alive")
 	}
 
+	// Track timing for each SMTP command
+	startTime := time.Now()
+
 	// Reset for new message
+	resetStart := time.Now()
 	if err := c.client.Reset(); err != nil {
 		c.alive = false
 		return fmt.Errorf("SMTP RESET failed: %w", err)
 	}
+	resetDuration := time.Since(resetStart).Milliseconds()
 
+	// MAIL FROM
+	mailStart := time.Now()
 	if err := c.client.Mail(from); err != nil {
 		return fmt.Errorf("SMTP MAIL FROM failed: %w", err)
 	}
+	mailDuration := time.Since(mailStart).Milliseconds()
 
+	// RCPT TO
+	rcptStart := time.Now()
 	if err := c.client.Rcpt(to); err != nil {
 		return fmt.Errorf("SMTP RCPT TO failed: %w", err)
 	}
+	rcptDuration := time.Since(rcptStart).Milliseconds()
 
+	// DATA command
+	dataStart := time.Now()
 	w, err := c.client.Data()
 	if err != nil {
 		return fmt.Errorf("SMTP DATA failed: %w", err)
 	}
+	dataInitDuration := time.Since(dataStart).Milliseconds()
 
+	// Write message body
+	writeStart := time.Now()
 	if _, err := w.Write(msg); err != nil {
 		return fmt.Errorf("SMTP write failed: %w", err)
 	}
+	writeDuration := time.Since(writeStart).Milliseconds()
 
+	// Close DATA (wait for server response)
+	closeStart := time.Now()
 	if err := w.Close(); err != nil {
 		return fmt.Errorf("SMTP close data failed: %w", err)
 	}
+	closeDuration := time.Since(closeStart).Milliseconds()
+
+	totalDuration := time.Since(startTime).Milliseconds()
+
+	// Log detailed SMTP command timing
+	fmt.Printf("[SMTP TIMING] to=%s total=%dms reset=%dms mail=%dms rcpt=%dms data_init=%dms write=%dms close=%dms\n",
+		to, totalDuration, resetDuration, mailDuration, rcptDuration, dataInitDuration, writeDuration, closeDuration)
 
 	return nil
 }
