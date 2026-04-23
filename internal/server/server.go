@@ -100,12 +100,7 @@ func New(cfg *config.Config, db database.Querier, rdb *redis.Client, asynqClient
 	creditService := billingapp.NewCreditService(cacheAdapter, logger)
 	stripeService := billinginfra.NewStripeService(
 		cfg.Stripe.SecretKey,
-		cfg.Stripe.WebhookSecret,
 		cfg.Stripe.PublishableKey,
-		cfg.Stripe.PriceIDStarter,
-		cfg.Stripe.PriceIDPro,
-		cfg.Stripe.SuccessURL,
-		cfg.Stripe.CancelURL,
 		logger,
 	)
 	billingService := billingapp.NewService(db, rdb, stripeService, logger)
@@ -137,9 +132,6 @@ func New(cfg *config.Config, db database.Querier, rdb *redis.Client, asynqClient
 
 	// ─── Public Routes (no auth) ─────────────────────────────────────────
 	trackinghttp.RegisterRoutes(app, trackingHandler)
-
-	// Stripe webhook (public, no auth)
-	billinghttp.RegisterWebhookRoutes(app, billingHandler)
 
 	// ─── API v1 ──────────────────────────────────────────────────────────
 	v1 := app.Group("/v1")

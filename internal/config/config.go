@@ -157,12 +157,7 @@ type ObservabilityConfig struct {
 
 type StripeConfig struct {
 	SecretKey      string
-	WebhookSecret  string
 	PublishableKey string
-	PriceIDStarter string
-	PriceIDPro     string
-	SuccessURL     string
-	CancelURL      string
 }
 
 type AppConfig struct {
@@ -275,12 +270,7 @@ func loadConfig() *Config {
 		},
 		Stripe: StripeConfig{
 			SecretKey:      getEnv("STRIPE_SECRET_KEY", ""),
-			WebhookSecret:  getEnv("STRIPE_WEBHOOK_SECRET", ""),
 			PublishableKey: getEnv("STRIPE_PUBLISHABLE_KEY", ""),
-			PriceIDStarter: getEnv("STRIPE_PRICE_ID_STARTER", ""),
-			PriceIDPro:     getEnv("STRIPE_PRICE_ID_PRO", ""),
-			SuccessURL:     getEnv("STRIPE_SUCCESS_URL", "http://localhost:3000/billing/success"),
-			CancelURL:      getEnv("STRIPE_CANCEL_URL", "http://localhost:3000/billing/cancel"),
 		},
 		App: AppConfig{
 			Env:     getEnv("APP_ENV", "development"),

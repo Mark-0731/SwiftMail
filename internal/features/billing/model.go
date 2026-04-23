@@ -6,15 +6,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// Plan represents a billing plan.
-type Plan struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	MonthlyLimit int    `json:"monthly_limit"` // 0 = unlimited
-	PriceUSD     int    `json:"price_usd"`     // in cents, -1 = custom
-	DedicatedIP  bool   `json:"dedicated_ip"`
-}
-
 // Credit represents a user's email credit balance.
 type Credit struct {
 	UserID             uuid.UUID `json:"user_id"`
@@ -25,32 +16,29 @@ type Credit struct {
 	UpdatedAt          time.Time `json:"updated_at"`
 }
 
-// Usage represents monthly email usage.
+// Usage represents email usage stats.
 type Usage struct {
-	UserID    uuid.UUID `json:"user_id"`
-	Month     string    `json:"month"` // "2026-04"
-	Sent      int64     `json:"sent"`
-	Limit     int64     `json:"limit"`
-	Remaining int64     `json:"remaining"`
+	UserID  uuid.UUID `json:"user_id"`
+	Month   string    `json:"month"` // "2026-04"
+	Sent    int64     `json:"sent"`
+	Balance int64     `json:"balance"` // Current credit balance
 }
 
-// Subscription represents a user's subscription.
-type Subscription struct {
-	UserID               uuid.UUID `json:"user_id"`
-	StripeSubscriptionID string    `json:"stripe_subscription_id"`
-	PlanID               string    `json:"plan_id"`
-	Status               string    `json:"status"` // active, canceled, past_due, trialing
-	CurrentPeriodStart   time.Time `json:"current_period_start"`
-	CurrentPeriodEnd     time.Time `json:"current_period_end"`
-	CancelAtPeriodEnd    bool      `json:"cancel_at_period_end"`
-	CreatedAt            time.Time `json:"created_at"`
-	UpdatedAt            time.Time `json:"updated_at"`
+// Pricing constants
+const (
+	MinimumTopUpUSD     = 10                                 // Minimum $10 top-up
+	CreditsPerDollar    = 1000                               // $1 = 1,000 email credits
+	MinimumTopUpCredits = MinimumTopUpUSD * CreditsPerDollar // 10,000 credits minimum
+)
+
+// CalculateCredits converts USD amount to email credits
+// Formula: $1 = 1,000 emails
+// Example: $10 = 10,000 emails, $50 = 50,000 emails
+func CalculateCredits(amountUSD int64) int64 {
+	return amountUSD * CreditsPerDollar
 }
 
-// AvailablePlans returns the list of billing plans.
-var AvailablePlans = []Plan{
-	{ID: "free", Name: "Free", MonthlyLimit: 1000, PriceUSD: 0, DedicatedIP: false},
-	{ID: "starter", Name: "Starter", MonthlyLimit: 50000, PriceUSD: 2500, DedicatedIP: false},
-	{ID: "pro", Name: "Pro", MonthlyLimit: 500000, PriceUSD: 9900, DedicatedIP: true},
-	{ID: "enterprise", Name: "Enterprise", MonthlyLimit: 0, PriceUSD: -1, DedicatedIP: true},
+// CalculatePrice converts credits to USD amount
+func CalculatePrice(credits int64) int64 {
+	return credits / CreditsPerDollar
 }

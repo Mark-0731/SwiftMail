@@ -1,7 +1,6 @@
 package http
 
 import (
-	"io"
 	"strconv"
 
 	"github.com/Mark-0731/SwiftMail/internal/features/billing"
@@ -41,151 +40,59 @@ func (h *Handler) GetUsage(c *fiber.Ctx) error {
 	return response.OK(c, usage)
 }
 
-// GetPlans returns available billing plans.
-func (h *Handler) GetPlans(c *fiber.Ctx) error {
-	return response.OK(c, billing.AvailablePlans)
-}
-
-// GetSubscription returns the user's current subscription.
-func (h *Handler) GetSubscription(c *fiber.Ctx) error {
-	userID := middleware.GetUserID(c)
-	sub, err := h.service.GetSubscription(c.Context(), userID)
-	if err != nil {
-		return response.InternalError(c, "Failed to get subscription")
-	}
-	if sub == nil {
-		return response.OK(c, fiber.Map{"subscription": nil, "plan": "free"})
-	}
-	return response.OK(c, sub)
-}
-
-// CreateCheckoutSession creates a Stripe checkout session for subscription.
-func (h *Handler) CreateCheckoutSession(c *fiber.Ctx) error {
-	userID := middleware.GetUserID(c)
-
-	var req struct {
-		PlanID string `json:"plan_id"`
-	}
-	if err := c.BodyParser(&req); err != nil {
-		return response.BadRequest(c, "INVALID_BODY", "Invalid request body")
-	}
-
-	if req.PlanID == "" || req.PlanID == "free" {
-		return response.ValidationError(c, "plan_id is required and cannot be 'free'")
-	}
-
-	session, err := h.service.CreateCheckoutSession(c.Context(), userID, req.PlanID)
-	if err != nil {
-		return response.InternalError(c, "Failed to create checkout session")
-	}
-
-	return response.OK(c, fiber.Map{
-		"session_id": session.ID,
-		"url":        session.URL,
-	})
-}
-
-// CreatePaymentIntent creates a payment intent for credit purchase.
+// CreatePaymentIntent creates a payment intent for credit top-up.
 func (h *Handler) CreatePaymentIntent(c *fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
 
 	var req struct {
-		Amount int64 `json:"amount"` // in USD cents
+		AmountUSD int64 `json:"amount_usd"` // in USD (e.g., 10 = $10)
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return response.BadRequest(c, "INVALID_BODY", "Invalid request body")
 	}
 
-	if req.Amount < 100 || req.Amount > 1000000 {
-		return response.ValidationError(c, "amount must be between $1 and $10,000")
+	if req.AmountUSD < billing.MinimumTopUpUSD {
+		return response.ValidationError(c, "minimum top-up amount is $10")
 	}
 
-	pi, err := h.service.CreatePaymentIntent(c.Context(), userID, req.Amount)
-	if err != nil {
-		return response.InternalError(c, "Failed to create payment intent")
+	if req.AmountUSD > 10000 {
+		return response.ValidationError(c, "maximum top-up amount is $10,000")
 	}
+
+	pi, err := h.service.CreatePaymentIntent(c.Context(), userID, req.AmountUSD)
+	if err != nil {
+		return response.InternalError(c, err.Error())
+	}
+
+	credits := billing.CalculateCredits(req.AmountUSD)
 
 	return response.OK(c, fiber.Map{
 		"client_secret":     pi.ClientSecret,
 		"payment_intent_id": pi.ID,
+		"amount_usd":        req.AmountUSD,
+		"credits":           credits,
 	})
 }
 
-// CancelSubscription cancels the user's subscription.
-func (h *Handler) CancelSubscription(c *fiber.Ctx) error {
-	userID := middleware.GetUserID(c)
-
-	err := h.service.CancelSubscription(c.Context(), userID)
-	if err != nil {
-		return response.InternalError(c, "Failed to cancel subscription")
-	}
-
-	return response.OK(c, fiber.Map{"message": "Subscription will be cancelled at the end of the billing period"})
-}
-
-// StripeWebhook handles Stripe webhook events.
-func (h *Handler) StripeWebhook(c *fiber.Ctx) error {
-	payload, err := io.ReadAll(c.Request().BodyStream())
-	if err != nil {
-		return response.BadRequest(c, "INVALID_PAYLOAD", "Failed to read request body")
-	}
-
-	signature := c.Get("Stripe-Signature")
-	if signature == "" {
-		return response.BadRequest(c, "MISSING_SIGNATURE", "Missing Stripe-Signature header")
-	}
-
-	event, err := h.service.ConstructWebhookEvent(payload, signature)
-	if err != nil {
-		return response.BadRequest(c, "INVALID_SIGNATURE", "Invalid webhook signature")
-	}
-
-	// Process webhook asynchronously
-	go func() {
-		if err := h.service.HandleWebhook(c.Context(), event); err != nil {
-			// Log error but don't expose details
-		}
-	}()
-
-	return response.OK(c, fiber.Map{"received": true})
-}
-
-// GetPublishableKey returns the Stripe publishable key for frontend.
-func (h *Handler) GetPublishableKey(c *fiber.Ctx) error {
-	return response.OK(c, fiber.Map{
-		"publishable_key": h.service.GetStripePublishableKey(),
-	})
-}
-
-// PurchaseCredits handles credit purchase (one-time payment).
-func (h *Handler) PurchaseCredits(c *fiber.Ctx) error {
-	userID := middleware.GetUserID(c)
-
+// ConfirmPayment confirms a payment and adds credits immediately.
+func (h *Handler) ConfirmPayment(c *fiber.Ctx) error {
 	var req struct {
-		Credits int64 `json:"credits"` // Number of credits to purchase
+		PaymentIntentID string `json:"payment_intent_id"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return response.BadRequest(c, "INVALID_BODY", "Invalid request body")
 	}
 
-	if req.Credits < 100 || req.Credits > 1000000 {
-		return response.ValidationError(c, "credits must be between 100 and 1,000,000")
+	if req.PaymentIntentID == "" {
+		return response.ValidationError(c, "payment_intent_id is required")
 	}
 
-	// 1 credit = 1 cent
-	amount := req.Credits
-
-	pi, err := h.service.CreatePaymentIntent(c.Context(), userID, amount)
+	err := h.service.ConfirmPaymentAndAddCredits(c.Context(), req.PaymentIntentID)
 	if err != nil {
-		return response.InternalError(c, "Failed to create payment intent")
+		return response.InternalError(c, err.Error())
 	}
 
-	return response.OK(c, fiber.Map{
-		"client_secret":     pi.ClientSecret,
-		"payment_intent_id": pi.ID,
-		"amount":            amount,
-		"credits":           req.Credits,
-	})
+	return response.OK(c, fiber.Map{"message": "Payment confirmed, credits added"})
 }
 
 // GetTransactions returns credit transaction history.

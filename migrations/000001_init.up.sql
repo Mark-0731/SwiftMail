@@ -303,22 +303,6 @@ CREATE TABLE credit_transactions (
 CREATE INDEX idx_credit_tx_user ON credit_transactions(user_id, created_at);
 CREATE INDEX idx_credit_tx_stripe ON credit_transactions(stripe_payment_id);
 
-CREATE TABLE subscriptions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE UNIQUE,
-    stripe_subscription_id VARCHAR(255) NOT NULL,
-    plan_id VARCHAR(50) NOT NULL,
-    status VARCHAR(20) NOT NULL CHECK (status IN ('active', 'canceled', 'past_due', 'trialing', 'incomplete', 'incomplete_expired', 'unpaid')),
-    current_period_start TIMESTAMPTZ NOT NULL,
-    current_period_end TIMESTAMPTZ NOT NULL,
-    cancel_at_period_end BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-CREATE INDEX idx_subscriptions_user ON subscriptions(user_id);
-CREATE INDEX idx_subscriptions_stripe ON subscriptions(stripe_subscription_id);
-CREATE INDEX idx_subscriptions_status ON subscriptions(status);
-
 -- ==================== AUDIT ====================
 
 CREATE TABLE audit_logs (
