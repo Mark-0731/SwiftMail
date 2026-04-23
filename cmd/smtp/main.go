@@ -51,7 +51,7 @@ func main() {
 
 	// Initialize auth components
 	authRepo := infrastructure.NewPostgresRepository(dbPool)
-	apiKeyMgr := domain.NewAPIKeyManager(rdb)
+	apiKeyMgr := domain.NewAPIKeyManager(rdb, authRepo)
 
 	// Create SMTP backend
 	backend := smtprelay.NewBackend(dbPool, rdb, asynqClient, authRepo, apiKeyMgr, log)

@@ -170,7 +170,7 @@ func (e *AdaptiveRetryEngine) RecordRetryOutcome(
 	}
 
 	// Persist to database asynchronously
-	go e.persistStrategy(ctx, strategy)
+	go e.persistStrategy(context.Background(), strategy)
 }
 
 // adaptStrategy adjusts the retry strategy based on learned patterns

@@ -286,7 +286,7 @@ func (h *SendHandler) handleSendError(
 				Msg("task moved to DLQ")
 
 			// Check if this should be quarantined to poison queue
-			go h.poisonQueue.CheckAndQuarantine(ctx, payload.EmailLogID, &payload.EmailLogID)
+			go h.poisonQueue.CheckAndQuarantine(context.Background(), payload.EmailLogID, &payload.EmailLogID)
 		}
 	}
 
