@@ -3,9 +3,10 @@ package infrastructure
 import (
 	"context"
 
-	template "github.com/Mark-0731/SwiftMail/internal/features/template"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
+
+	template "github.com/Mark-0731/SwiftMail/internal/features/template"
+	"github.com/Mark-0731/SwiftMail/pkg/database"
 )
 
 // Repository defines the template data access interface.
@@ -23,11 +24,11 @@ type Repository interface {
 
 // PostgresRepository implements Repository.
 type PostgresRepository struct {
-	db *pgxpool.Pool
+	db database.Querier
 }
 
 // NewPostgresRepository creates a new template repository.
-func NewPostgresRepository(db *pgxpool.Pool) *PostgresRepository {
+func NewPostgresRepository(db database.Querier) *PostgresRepository {
 	return &PostgresRepository{db: db}
 }
 

@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/Mark-0731/SwiftMail/pkg/database"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Repository defines the interface for auth-related database operations.
@@ -70,11 +70,11 @@ type APIKeyModel struct {
 
 // PostgresRepository implements Repository with PostgreSQL.
 type PostgresRepository struct {
-	db *pgxpool.Pool
+	db database.Querier
 }
 
 // NewPostgresRepository creates a new PostgreSQL-backed auth repository.
-func NewPostgresRepository(db *pgxpool.Pool) *PostgresRepository {
+func NewPostgresRepository(db database.Querier) *PostgresRepository {
 	return &PostgresRepository{db: db}
 }
 

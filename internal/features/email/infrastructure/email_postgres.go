@@ -1,13 +1,14 @@
 package infrastructure
 
 import (
-emailtypes "github.com/Mark-0731/SwiftMail/internal/features/email"
 	"context"
 	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
+
+	emailtypes "github.com/Mark-0731/SwiftMail/internal/features/email"
+	"github.com/Mark-0731/SwiftMail/pkg/database"
 )
 
 // Ensure PostgresEmailRepository implements EmailRepository
@@ -15,11 +16,11 @@ var _ EmailRepository = (*PostgresEmailRepository)(nil)
 
 // PostgresEmailRepository implements EmailRepository using PostgreSQL.
 type PostgresEmailRepository struct {
-	db *pgxpool.Pool
+	db database.Querier
 }
 
 // NewPostgresEmailRepository creates a new PostgreSQL email repository.
-func NewPostgresEmailRepository(db *pgxpool.Pool) EmailRepository {
+func NewPostgresEmailRepository(db database.Querier) EmailRepository {
 	return &PostgresEmailRepository{db: db}
 }
 

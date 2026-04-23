@@ -1,19 +1,20 @@
 package smtprelay
 
 import (
-	"github.com/Mark-0731/SwiftMail/internal/features/auth/domain"
-	"github.com/Mark-0731/SwiftMail/internal/features/auth/infrastructure"
 	"github.com/emersion/go-smtp"
 	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
+
+	"github.com/Mark-0731/SwiftMail/internal/features/auth/domain"
+	"github.com/Mark-0731/SwiftMail/internal/features/auth/infrastructure"
+	"github.com/Mark-0731/SwiftMail/pkg/database"
 )
 
 // Backend implements SMTP server backend.
 type Backend struct {
-	db          *pgxpool.Pool
+	db          database.Querier
 	rdb         *redis.Client
 	asynqClient *asynq.Client
 	authRepo    infrastructure.Repository
@@ -22,7 +23,7 @@ type Backend struct {
 }
 
 // NewBackend creates a new SMTP backend.
-func NewBackend(db *pgxpool.Pool, rdb *redis.Client, asynqClient *asynq.Client, authRepo infrastructure.Repository, apiKeyMgr *domain.APIKeyManager, logger zerolog.Logger) *Backend {
+func NewBackend(db database.Querier, rdb *redis.Client, asynqClient *asynq.Client, authRepo infrastructure.Repository, apiKeyMgr *domain.APIKeyManager, logger zerolog.Logger) *Backend {
 	return &Backend{
 		db:          db,
 		rdb:         rdb,

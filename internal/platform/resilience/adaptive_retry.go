@@ -7,8 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
+
+	"github.com/Mark-0731/SwiftMail/pkg/database"
 )
 
 // RetryStrategy represents a learned retry strategy for a domain/error type
@@ -26,7 +27,7 @@ type RetryStrategy struct {
 
 // AdaptiveRetryEngine learns from failure patterns and adjusts retry timing
 type AdaptiveRetryEngine struct {
-	db         *pgxpool.Pool
+	db         database.Querier
 	logger     zerolog.Logger
 	strategies map[string]*RetryStrategy // key: "domain:error_category"
 	mu         sync.RWMutex
@@ -40,7 +41,7 @@ type AdaptiveRetryEngine struct {
 }
 
 // NewAdaptiveRetryEngine creates a new adaptive retry engine
-func NewAdaptiveRetryEngine(db *pgxpool.Pool, logger zerolog.Logger) *AdaptiveRetryEngine {
+func NewAdaptiveRetryEngine(db database.Querier, logger zerolog.Logger) *AdaptiveRetryEngine {
 	engine := &AdaptiveRetryEngine{
 		db:                 db,
 		logger:             logger,

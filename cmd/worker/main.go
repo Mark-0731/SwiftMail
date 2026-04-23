@@ -8,7 +8,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 
@@ -20,6 +19,7 @@ import (
 	smtpengine "github.com/Mark-0731/SwiftMail/internal/platform/smtp"
 	"github.com/Mark-0731/SwiftMail/internal/platform/worker"
 	"github.com/Mark-0731/SwiftMail/internal/shared/events"
+	"github.com/Mark-0731/SwiftMail/pkg/database"
 	"github.com/Mark-0731/SwiftMail/pkg/logger"
 	"github.com/Mark-0731/SwiftMail/pkg/metrics"
 )
@@ -31,13 +31,16 @@ func main() {
 
 	ctx := context.Background()
 
-	// Connect to PostgreSQL
-	dbPool, err := pgxpool.New(ctx, cfg.Database.DSN())
+	// Connect to PostgreSQL with Read Replica support
+	dbPool, err := database.NewPool(ctx, cfg.Database.DSN(), cfg.Database.ReadReplicaDSN())
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to connect to PostgreSQL")
 	}
 	defer dbPool.Close()
 	log.Info().Msg("connected to PostgreSQL")
+	if cfg.Database.ReadReplicaHost != "" {
+		log.Info().Str("replica", cfg.Database.ReadReplicaHost).Msg("read replica enabled")
+	}
 
 	// Connect to Redis
 	rdb := redis.NewClient(&redis.Options{
@@ -94,10 +97,10 @@ func main() {
 	eventBus := events.NewRedisBus(rdb, log)
 
 	// Initialize repositories
-	emailRepo := emailrepo.NewPostgresEmailRepository(dbPool)
+	emailRepo := emailrepo.NewPostgresEmailRepository(dbPool.GetPrimary())
 
 	// Initialize Dead Letter Queue
-	dlq := queue.NewDeadLetterQueue(dbPool, 30*24*time.Hour, log) // 30 days retention
+	dlq := queue.NewDeadLetterQueue(dbPool.GetPrimary(), 30*24*time.Hour, log) // 30 days retention
 
 	// Start DLQ cleanup worker (runs daily)
 	go dlq.StartCleanupWorker(ctx, 24*time.Hour)
@@ -105,11 +108,11 @@ func main() {
 	// Initialize resilience components (required by SendHandler)
 	circuitBreakerMgr := resilience.NewCircuitBreakerManager(
 		resilience.DefaultCircuitBreakerConfig(),
-		dbPool,
+		dbPool.GetPrimary(),
 		log,
 	)
-	adaptiveRetryEngine := resilience.NewAdaptiveRetryEngine(dbPool, log)
-	poisonQueue := resilience.NewPoisonQueue(dbPool, log)
+	adaptiveRetryEngine := resilience.NewAdaptiveRetryEngine(dbPool.GetPrimary(), log)
+	poisonQueue := resilience.NewPoisonQueue(dbPool.GetPrimary(), log)
 	backpressureController := resilience.NewBackpressureController(
 		cfg.Worker.Concurrency,   // maxConcurrency
 		cfg.Worker.Concurrency/2, // minConcurrency

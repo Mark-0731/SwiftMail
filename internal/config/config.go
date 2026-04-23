@@ -43,10 +43,41 @@ type DatabaseConfig struct {
 	MaxOpenConns    int
 	MaxIdleConns    int
 	ConnMaxLifetime time.Duration
+	// Read Replica Configuration
+	ReadReplicaHost     string
+	ReadReplicaPort     string
+	ReadReplicaUser     string
+	ReadReplicaPassword string
+	ReadReplicaName     string
+	ReadReplicaSSLMode  string
 }
 
 func (d DatabaseConfig) DSN() string {
 	return "postgres://" + d.User + ":" + d.Password + "@" + d.Host + ":" + d.Port + "/" + d.Name + "?sslmode=" + d.SSLMode
+}
+
+func (d DatabaseConfig) ReadReplicaDSN() string {
+	if d.ReadReplicaHost == "" {
+		// If no read replica configured, use primary
+		return d.DSN()
+	}
+	user := d.ReadReplicaUser
+	if user == "" {
+		user = d.User
+	}
+	password := d.ReadReplicaPassword
+	if password == "" {
+		password = d.Password
+	}
+	name := d.ReadReplicaName
+	if name == "" {
+		name = d.Name
+	}
+	sslMode := d.ReadReplicaSSLMode
+	if sslMode == "" {
+		sslMode = d.SSLMode
+	}
+	return "postgres://" + user + ":" + password + "@" + d.ReadReplicaHost + ":" + d.ReadReplicaPort + "/" + name + "?sslmode=" + sslMode
 }
 
 type RedisConfig struct {
@@ -172,6 +203,13 @@ func loadConfig() *Config {
 			MaxOpenConns:    getIntEnv("DB_MAX_OPEN_CONNS", 25),
 			MaxIdleConns:    getIntEnv("DB_MAX_IDLE_CONNS", 10),
 			ConnMaxLifetime: getDurationEnv("DB_CONN_MAX_LIFETIME", 5*time.Minute),
+			// Read Replica
+			ReadReplicaHost:     getEnv("DB_READ_REPLICA_HOST", ""),
+			ReadReplicaPort:     getEnv("DB_READ_REPLICA_PORT", ""),
+			ReadReplicaUser:     getEnv("DB_READ_REPLICA_USER", ""),
+			ReadReplicaPassword: getEnv("DB_READ_REPLICA_PASSWORD", ""),
+			ReadReplicaName:     getEnv("DB_READ_REPLICA_NAME", ""),
+			ReadReplicaSSLMode:  getEnv("DB_READ_REPLICA_SSL_MODE", ""),
 		},
 		Redis: RedisConfig{
 			Host:     getEnv("REDIS_HOST", "localhost"),

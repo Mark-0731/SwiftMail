@@ -94,9 +94,9 @@ func NewMetrics() *Metrics {
 		prometheus.CounterOpts{
 			Namespace: "swiftmail",
 			Name:      "emails_sent_total",
-			Help:      "Total emails sent by status",
+			Help:      "Total emails by detailed status (queued, sent, delivered, bounced, failed, opened, clicked, complained)",
 		},
-		[]string{"status", "domain"},
+		[]string{"status", "domain", "bounce_type"},
 	)
 	registry.MustRegister(m.EmailsSentTotal)
 

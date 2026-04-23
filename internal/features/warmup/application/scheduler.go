@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
+
+	"github.com/Mark-0731/SwiftMail/pkg/database"
 )
 
 // Schedule defines the IP warmup ramp (14 days to fully warmed).
@@ -30,12 +31,12 @@ var ISPDistribution = map[string]float64{
 
 // Scheduler manages IP warmup progression.
 type Scheduler struct {
-	db     *pgxpool.Pool
+	db     database.Querier
 	logger zerolog.Logger
 }
 
 // NewScheduler creates a warmup scheduler.
-func NewScheduler(db *pgxpool.Pool, logger zerolog.Logger) *Scheduler {
+func NewScheduler(db database.Querier, logger zerolog.Logger) *Scheduler {
 	return &Scheduler{db: db, logger: logger}
 }
 

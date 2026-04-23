@@ -12,13 +12,13 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/hibiken/asynq"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 
 	"github.com/Mark-0731/SwiftMail/internal/config"
 	warmup "github.com/Mark-0731/SwiftMail/internal/features/warmup/application"
 	"github.com/Mark-0731/SwiftMail/internal/server"
+	"github.com/Mark-0731/SwiftMail/pkg/database"
 	"github.com/Mark-0731/SwiftMail/pkg/logger"
 	"github.com/Mark-0731/SwiftMail/pkg/metrics"
 )
@@ -33,8 +33,8 @@ func main() {
 
 	ctx := context.Background()
 
-	// Connect to PostgreSQL
-	dbPool, err := pgxpool.New(ctx, cfg.Database.DSN())
+	// Connect to PostgreSQL with Read Replica support
+	dbPool, err := database.NewPool(ctx, cfg.Database.DSN(), cfg.Database.ReadReplicaDSN())
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to connect to PostgreSQL")
 	}
@@ -44,6 +44,9 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to ping PostgreSQL")
 	}
 	log.Info().Msg("connected to PostgreSQL")
+	if cfg.Database.ReadReplicaHost != "" {
+		log.Info().Str("replica", cfg.Database.ReadReplicaHost).Msg("read replica enabled")
+	}
 
 	// Connect to Redis
 	rdb := redis.NewClient(&redis.Options{
@@ -86,7 +89,7 @@ func main() {
 	}
 
 	// Start warmup scheduler (runs daily at midnight)
-	warmupScheduler := warmup.NewScheduler(dbPool, log)
+	warmupScheduler := warmup.NewScheduler(dbPool.GetPrimary(), log)
 	go func() {
 		ticker := time.NewTicker(24 * time.Hour)
 		defer ticker.Stop()
@@ -128,7 +131,7 @@ func main() {
 	}()
 
 	// Create Fiber server
-	app := server.New(cfg, dbPool, rdb, asynqClient, m, log)
+	app := server.New(cfg, dbPool.GetPrimary(), rdb, asynqClient, m, log)
 
 	// Graceful shutdown
 	quit := make(chan os.Signal, 1)

@@ -6,14 +6,15 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
+
+	"github.com/Mark-0731/SwiftMail/pkg/database"
 )
 
 // Detector monitors bounce and complaint rates to auto-block abusive users.
 type Detector struct {
-	db     *pgxpool.Pool
+	db     database.Querier
 	rdb    *redis.Client
 	logger zerolog.Logger
 
@@ -24,7 +25,7 @@ type Detector struct {
 }
 
 // NewDetector creates a new abuse detector.
-func NewDetector(db *pgxpool.Pool, rdb *redis.Client, logger zerolog.Logger) *Detector {
+func NewDetector(db database.Querier, rdb *redis.Client, logger zerolog.Logger) *Detector {
 	return &Detector{
 		db:                     db,
 		rdb:                    rdb,

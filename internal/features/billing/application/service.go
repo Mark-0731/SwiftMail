@@ -6,25 +6,26 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Mark-0731/SwiftMail/internal/features/billing"
-	"github.com/Mark-0731/SwiftMail/internal/features/billing/infrastructure"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 	"github.com/stripe/stripe-go/v85"
+
+	"github.com/Mark-0731/SwiftMail/internal/features/billing"
+	"github.com/Mark-0731/SwiftMail/internal/features/billing/infrastructure"
+	"github.com/Mark-0731/SwiftMail/pkg/database"
 )
 
 // Service manages billing credits, subscriptions, and Stripe integration.
 type Service struct {
-	db     *pgxpool.Pool
+	db     database.Querier
 	rdb    *redis.Client
 	stripe *infrastructure.StripeService
 	logger zerolog.Logger
 }
 
 // NewService creates a billing service.
-func NewService(db *pgxpool.Pool, rdb *redis.Client, stripe *infrastructure.StripeService, logger zerolog.Logger) *Service {
+func NewService(db database.Querier, rdb *redis.Client, stripe *infrastructure.StripeService, logger zerolog.Logger) *Service {
 	return &Service{
 		db:     db,
 		rdb:    rdb,

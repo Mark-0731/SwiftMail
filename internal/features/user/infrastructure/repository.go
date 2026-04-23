@@ -4,18 +4,19 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Mark-0731/SwiftMail/internal/features/user"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/Mark-0731/SwiftMail/internal/features/user"
+	"github.com/Mark-0731/SwiftMail/pkg/database"
 )
 
 // Repository defines user data access.
 type Repository struct {
-	db *pgxpool.Pool
+	db database.Querier
 }
 
 // NewRepository creates a user repository.
-func NewRepository(db *pgxpool.Pool) *Repository {
+func NewRepository(db database.Querier) *Repository {
 	return &Repository{db: db}
 }
 

@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	suppression "github.com/Mark-0731/SwiftMail/internal/features/suppression"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
+
+	suppression "github.com/Mark-0731/SwiftMail/internal/features/suppression"
+	"github.com/Mark-0731/SwiftMail/pkg/database"
 )
 
 // Repository defines the suppression data access interface.
@@ -19,11 +20,11 @@ type Repository interface {
 
 // PostgresRepository implements Repository.
 type PostgresRepository struct {
-	db *pgxpool.Pool
+	db database.Querier
 }
 
 // NewPostgresRepository creates a new suppression repository.
-func NewPostgresRepository(db *pgxpool.Pool) *PostgresRepository {
+func NewPostgresRepository(db database.Querier) *PostgresRepository {
 	return &PostgresRepository{db: db}
 }
 

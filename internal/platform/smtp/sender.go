@@ -128,7 +128,7 @@ func (s *Sender) Send(ctx context.Context, req *SendRequest) (string, error) {
 		conn.Close()
 		s.circuitBreaker.RecordFailure(ctx, recipientDomain)
 
-		s.metrics.EmailsSentTotal.WithLabelValues("error", recipientDomain).Inc()
+		s.metrics.EmailsSentTotal.WithLabelValues("error", recipientDomain, "").Inc()
 
 		s.logger.Error().
 			Str("to", req.To).

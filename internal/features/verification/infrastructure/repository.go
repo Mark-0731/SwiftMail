@@ -5,18 +5,18 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/Mark-0731/SwiftMail/internal/features/verification"
+	"github.com/Mark-0731/SwiftMail/pkg/database"
 )
 
 // PostgresRepository implements verification.Repository
 type PostgresRepository struct {
-	db *pgxpool.Pool
+	db database.Querier
 }
 
 // NewPostgresRepository creates a new PostgreSQL verification repository
-func NewPostgresRepository(db *pgxpool.Pool) verification.Repository {
+func NewPostgresRepository(db database.Querier) verification.Repository {
 	return &PostgresRepository{db: db}
 }
 

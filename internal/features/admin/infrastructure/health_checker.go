@@ -4,20 +4,21 @@ import (
 	"context"
 	"time"
 
-	"github.com/Mark-0731/SwiftMail/internal/platform/smtp"
 	"github.com/hibiken/asynq"
-	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/Mark-0731/SwiftMail/internal/platform/smtp"
+	"github.com/Mark-0731/SwiftMail/pkg/database"
 )
 
 // HealthChecker implements health checking for system components
 type HealthChecker struct {
-	db       *pgxpool.Pool
+	db       database.Querier
 	smtpPool *smtp.Pool
 	asynq    *asynq.Client
 }
 
 // NewHealthChecker creates a new health checker
-func NewHealthChecker(db *pgxpool.Pool, smtpPool *smtp.Pool, asynq *asynq.Client) *HealthChecker {
+func NewHealthChecker(db database.Querier, smtpPool *smtp.Pool, asynq *asynq.Client) *HealthChecker {
 	return &HealthChecker{
 		db:       db,
 		smtpPool: smtpPool,

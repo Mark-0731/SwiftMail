@@ -113,7 +113,7 @@ func (h *SendHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 
 	if emailLog.Status == emailtypes.StatusSent {
 		log.Info().Msg("email already sent, skipping (idempotent)")
-		h.metrics.EmailsSentTotal.WithLabelValues("duplicate_skip", extractDomain(payload.To)).Inc()
+		h.metrics.EmailsSentTotal.WithLabelValues("duplicate_skip", extractDomain(payload.To), "").Inc()
 		return nil
 	}
 
@@ -253,8 +253,8 @@ func (h *SendHandler) handleSendError(
 			log.Warn().Err(err).Msg("failed to update status to deferred")
 		}
 
-		h.metrics.EmailsSentTotal.WithLabelValues("deferred", domain).Inc()
-		h.metrics.EmailsSentTotal.WithLabelValues("error_"+classification.Category, domain).Inc()
+		h.metrics.EmailsSentTotal.WithLabelValues("deferred", domain, "").Inc()
+		h.metrics.EmailsSentTotal.WithLabelValues("error_"+classification.Category, domain, "").Inc()
 
 		// Get adaptive retry delay
 		adaptiveDelay := h.adaptiveRetry.GetRetryDelay(domain, classification.Category, retryCount)
@@ -272,8 +272,8 @@ func (h *SendHandler) handleSendError(
 		log.Error().Err(err).Msg("failed to update status to failed")
 	}
 
-	h.metrics.EmailsSentTotal.WithLabelValues("failed", domain).Inc()
-	h.metrics.EmailsSentTotal.WithLabelValues("error_"+classification.Category, domain).Inc()
+	h.metrics.EmailsSentTotal.WithLabelValues("failed", domain, "").Inc()
+	h.metrics.EmailsSentTotal.WithLabelValues("error_"+classification.Category, domain, "").Inc()
 
 	// Move to DLQ
 	if classification.ShouldMoveToDLQ {
@@ -320,7 +320,7 @@ func (h *SendHandler) handleSendSuccess(
 		return fmt.Errorf("failed to update status: %w", err)
 	}
 
-	h.metrics.EmailsSentTotal.WithLabelValues("sent", domain).Inc()
+	h.metrics.EmailsSentTotal.WithLabelValues("sent", domain, "").Inc()
 
 	// Publish success event
 	event := events.EmailSentEvent(payload.EmailLogID, payload.UserID, payload.To)

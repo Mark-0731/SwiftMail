@@ -7,8 +7,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
+
+	"github.com/Mark-0731/SwiftMail/pkg/database"
 )
 
 // CircuitState represents the state of a circuit breaker
@@ -45,7 +46,7 @@ type CircuitBreaker struct {
 	resourceType string // "provider" or "domain"
 	resourceID   string // provider name or domain name
 	config       CircuitBreakerConfig
-	db           *pgxpool.Pool
+	db           database.Querier
 	logger       zerolog.Logger
 
 	mu                sync.RWMutex
@@ -62,7 +63,7 @@ type CircuitBreaker struct {
 func NewCircuitBreaker(
 	resourceType, resourceID string,
 	config CircuitBreakerConfig,
-	db *pgxpool.Pool,
+	db database.Querier,
 	logger zerolog.Logger,
 ) *CircuitBreaker {
 	cb := &CircuitBreaker{
@@ -364,14 +365,14 @@ type CircuitBreakerManager struct {
 	breakers map[string]*CircuitBreaker
 	mu       sync.RWMutex
 	config   CircuitBreakerConfig
-	db       *pgxpool.Pool
+	db       database.Querier
 	logger   zerolog.Logger
 }
 
 // NewCircuitBreakerManager creates a new manager
 func NewCircuitBreakerManager(
 	config CircuitBreakerConfig,
-	db *pgxpool.Pool,
+	db database.Querier,
 	logger zerolog.Logger,
 ) *CircuitBreakerManager {
 	return &CircuitBreakerManager{

@@ -5,18 +5,19 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
+
+	"github.com/Mark-0731/SwiftMail/pkg/database"
 )
 
 // AuditLogger handles authentication audit logging.
 type AuditLogger struct {
-	db     *pgxpool.Pool
+	db     database.Querier
 	logger zerolog.Logger
 }
 
 // NewAuditLogger creates a new audit logger.
-func NewAuditLogger(db *pgxpool.Pool, logger zerolog.Logger) *AuditLogger {
+func NewAuditLogger(db database.Querier, logger zerolog.Logger) *AuditLogger {
 	return &AuditLogger{
 		db:     db,
 		logger: logger,

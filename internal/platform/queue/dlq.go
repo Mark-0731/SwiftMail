@@ -8,8 +8,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
+
+	"github.com/Mark-0731/SwiftMail/pkg/database"
 )
 
 // DLQEntry represents a failed task in the dead letter queue
@@ -48,13 +49,13 @@ type DLQFilter struct {
 
 // DeadLetterQueue manages permanently failed tasks
 type DeadLetterQueue struct {
-	db        *pgxpool.Pool
+	db        database.Querier
 	logger    zerolog.Logger
 	retention time.Duration // How long to keep DLQ entries (default: 30 days)
 }
 
 // NewDeadLetterQueue creates a new DLQ manager
-func NewDeadLetterQueue(db *pgxpool.Pool, retention time.Duration, logger zerolog.Logger) *DeadLetterQueue {
+func NewDeadLetterQueue(db database.Querier, retention time.Duration, logger zerolog.Logger) *DeadLetterQueue {
 	if retention == 0 {
 		retention = 30 * 24 * time.Hour // 30 days default
 	}

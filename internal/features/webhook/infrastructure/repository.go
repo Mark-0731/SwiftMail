@@ -5,18 +5,19 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 
-	webhook "github.com/Mark-0731/SwiftMail/internal/features/webhook"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
+
+	webhook "github.com/Mark-0731/SwiftMail/internal/features/webhook"
+	"github.com/Mark-0731/SwiftMail/pkg/database"
 )
 
 // Repository manages webhook configurations in PostgreSQL.
 type Repository struct {
-	db *pgxpool.Pool
+	db database.Querier
 }
 
 // NewRepository creates a webhook repository.
-func NewRepository(db *pgxpool.Pool) *Repository {
+func NewRepository(db database.Querier) *Repository {
 	return &Repository{db: db}
 }
 

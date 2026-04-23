@@ -4,7 +4,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/hibiken/asynq"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 
@@ -46,12 +45,13 @@ import (
 	"github.com/Mark-0731/SwiftMail/internal/platform/cache"
 	"github.com/Mark-0731/SwiftMail/internal/platform/queue"
 	"github.com/Mark-0731/SwiftMail/internal/server/middleware"
+	"github.com/Mark-0731/SwiftMail/pkg/database"
 	"github.com/Mark-0731/SwiftMail/pkg/metrics"
 	"github.com/Mark-0731/SwiftMail/pkg/ratelimit"
 )
 
 // New creates and configures the Fiber application with all routes.
-func New(cfg *config.Config, db *pgxpool.Pool, rdb *redis.Client, asynqClient *asynq.Client, m *metrics.Metrics, logger zerolog.Logger) *fiber.App {
+func New(cfg *config.Config, db database.Querier, rdb *redis.Client, asynqClient *asynq.Client, m *metrics.Metrics, logger zerolog.Logger) *fiber.App {
 	app := fiber.New(fiber.Config{
 		AppName:               "SwiftMail API",
 		ReadTimeout:           cfg.Server.ReadTimeout,

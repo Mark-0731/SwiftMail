@@ -8,8 +8,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
+
+	"github.com/Mark-0731/SwiftMail/pkg/database"
 )
 
 // PoisonQueueEntry represents a message that has failed repeatedly
@@ -53,7 +54,7 @@ type PoisonQueueFilter struct {
 
 // PoisonQueue manages messages that fail repeatedly
 type PoisonQueue struct {
-	db                  *pgxpool.Pool
+	db                  database.Querier
 	logger              zerolog.Logger
 	failureThreshold    int           // Number of failures before quarantine
 	detectionWindow     time.Duration // Time window to detect repeated failures
@@ -61,7 +62,7 @@ type PoisonQueue struct {
 }
 
 // NewPoisonQueue creates a new poison queue manager
-func NewPoisonQueue(db *pgxpool.Pool, logger zerolog.Logger) *PoisonQueue {
+func NewPoisonQueue(db database.Querier, logger zerolog.Logger) *PoisonQueue {
 	return &PoisonQueue{
 		db:                  db,
 		logger:              logger,
