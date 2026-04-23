@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Mark-0731/SwiftMail/internal/platform/cache"
+	"github.com/Mark-0731/SwiftMail/pkg/database"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 )
@@ -13,13 +14,15 @@ import (
 // CreditService handles credit operations with proper rollback support.
 type CreditService struct {
 	cache  cache.Cache
+	db     database.Querier
 	logger zerolog.Logger
 }
 
 // NewCreditService creates a new credit service.
-func NewCreditService(cache cache.Cache, logger zerolog.Logger) *CreditService {
+func NewCreditService(cache cache.Cache, db database.Querier, logger zerolog.Logger) *CreditService {
 	return &CreditService{
 		cache:  cache,
+		db:     db,
 		logger: logger,
 	}
 }
@@ -82,6 +85,29 @@ func (cs *CreditService) CheckAndReserve(ctx context.Context, userID uuid.UUID, 
 			Msg("insufficient credits for reservation")
 		return false, newBalance, nil
 	}
+
+	// Also update PostgreSQL to keep it in sync
+	go func() {
+		// Use background context to avoid cancellation
+		bgCtx := context.Background()
+		_, err := cs.db.Exec(bgCtx,
+			`UPDATE credits SET balance = balance - $1, updated_at = NOW() 
+			 WHERE user_id = $2 AND balance >= $1`,
+			amount, userID,
+		)
+		if err != nil {
+			cs.logger.Error().Err(err).
+				Str("user_id", userID.String()).
+				Int64("amount", amount).
+				Msg("failed to sync credit deduction to PostgreSQL")
+		} else {
+			cs.logger.Debug().
+				Str("user_id", userID.String()).
+				Int64("amount", amount).
+				Int64("new_balance", newBalance).
+				Msg("credits synced to PostgreSQL")
+		}
+	}()
 
 	cs.logger.Info().
 		Str("user_id", userID.String()).

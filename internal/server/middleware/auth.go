@@ -64,8 +64,25 @@ func APIKeyAuth(apiKeyManager *authdomain.APIKeyManager, rdb *redis.Client, logg
 			}
 		}
 
-		// Cache miss — this path should be rare
-		return response.Unauthorized(c, "Invalid API key")
+		// Cache miss — load from database and cache it
+		logger.Debug().Str("key_hash", keyHash).Msg("API key cache miss, loading from database")
+
+		// Try to load from database and cache
+		keyData, err := apiKeyManager.LoadAndCacheAPIKey(c.Context(), keyHash)
+		if err != nil {
+			logger.Warn().Err(err).Str("key_hash", keyHash).Msg("API key not found in database")
+			return response.Unauthorized(c, "Invalid API key")
+		}
+
+		if keyData.Status != "active" {
+			return response.Forbidden(c, "Account is suspended")
+		}
+
+		c.Locals("user_id", keyData.UserID)
+		c.Locals("user_role", keyData.Role)
+		c.Locals("api_key_hash", keyHash)
+		c.Locals("api_key_permissions", keyData.Permissions)
+		return c.Next()
 	}
 }
 

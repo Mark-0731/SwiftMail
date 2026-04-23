@@ -5,8 +5,8 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -15,14 +15,31 @@ import (
 
 const apiKeyPrefix = "sm_live_"
 
+// APIKeyRepository defines database operations for API keys.
+type APIKeyRepository interface {
+	GetAPIKeyByHash(ctx context.Context, keyHash string) (APIKeyData, error)
+}
+
+// APIKeyData represents API key data from database (adapter interface).
+type APIKeyData interface {
+	GetUserID() uuid.UUID
+	GetPermissions() []string
+	GetUserRole() string
+	GetUserStatus() string
+}
+
 // APIKeyManager handles API key generation, hashing, and Redis caching.
 type APIKeyManager struct {
-	rdb *redis.Client
+	rdb  *redis.Client
+	repo APIKeyRepository
 }
 
 // NewAPIKeyManager creates a new API key manager.
-func NewAPIKeyManager(rdb *redis.Client) *APIKeyManager {
-	return &APIKeyManager{rdb: rdb}
+func NewAPIKeyManager(rdb *redis.Client, repo APIKeyRepository) *APIKeyManager {
+	return &APIKeyManager{
+		rdb:  rdb,
+		repo: repo,
+	}
 }
 
 // GenerateAPIKey generates a new API key with a prefix and returns the raw key and its hash.
@@ -62,16 +79,44 @@ type CachedAPIKeyData struct {
 // CacheAPIKey stores API key data in Redis for fast lookup.
 func (m *APIKeyManager) CacheAPIKey(ctx context.Context, keyHash string, data *CachedAPIKeyData) error {
 	key := fmt.Sprintf("api_key:%s", keyHash)
-	return m.rdb.Set(ctx, key, fmt.Sprintf(
-		`{"user_id":"%s","role":"%s","status":"%s","rate_per_sec":%d,"rate_per_day":%d}`,
-		data.UserID, data.Role, data.Status, data.RatePerSec, data.RatePerDay,
-	), 5*time.Minute).Err()
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("failed to marshal cache data: %w", err)
+	}
+	return m.rdb.Set(ctx, key, jsonData, 0).Err() // No expiry - permanent cache
 }
 
 // GetCachedAPIKey retrieves API key data from Redis cache.
 func (m *APIKeyManager) GetCachedAPIKey(ctx context.Context, keyHash string) (string, error) {
 	key := fmt.Sprintf("api_key:%s", keyHash)
 	return m.rdb.Get(ctx, key).Result()
+}
+
+// LoadAndCacheAPIKey loads API key from database and caches it in Redis.
+func (m *APIKeyManager) LoadAndCacheAPIKey(ctx context.Context, keyHash string) (*CachedAPIKeyData, error) {
+	// Load from database - repo returns a type that implements APIKeyData interface
+	keyData, err := m.repo.GetAPIKeyByHash(ctx, keyHash)
+	if err != nil {
+		return nil, fmt.Errorf("API key not found: %w", err)
+	}
+
+	// Prepare cache data using interface methods
+	cacheData := &CachedAPIKeyData{
+		UserID:      keyData.GetUserID(),
+		Role:        keyData.GetUserRole(),
+		Permissions: keyData.GetPermissions(),
+		Status:      keyData.GetUserStatus(),
+		RatePerSec:  100,
+		RatePerDay:  50000,
+	}
+
+	// Cache it
+	if err := m.CacheAPIKey(ctx, keyHash, cacheData); err != nil {
+		// Log but don't fail - we can still authenticate
+		return cacheData, nil
+	}
+
+	return cacheData, nil
 }
 
 // InvalidateAPIKeyCache removes an API key from Redis cache.

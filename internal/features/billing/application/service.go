@@ -49,8 +49,18 @@ func (s *Service) GetCredits(ctx context.Context, userID uuid.UUID) (*billing.Cr
 		if err != nil {
 			return nil, fmt.Errorf("failed to create credits: %w", err)
 		}
+
+		// Sync to Redis
+		key := fmt.Sprintf("credits:%s", userID.String())
+		s.rdb.Set(ctx, key, 1000, 0)
+
 		return &billing.Credit{UserID: userID, Balance: 1000, UpdatedAt: time.Now()}, nil
 	}
+
+	// Sync to Redis cache whenever we read from DB
+	key := fmt.Sprintf("credits:%s", userID.String())
+	s.rdb.Set(ctx, key, c.Balance, 0)
+
 	return c, nil
 }
 
@@ -109,8 +119,13 @@ func (s *Service) AddCredits(ctx context.Context, userID uuid.UUID, amount int64
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	// Invalidate Redis cache
-	s.rdb.Del(ctx, fmt.Sprintf("credits:%s", userID.String()))
+	// Sync to Redis cache - get updated balance and set it
+	credits, err := s.GetCredits(ctx, userID)
+	if err == nil {
+		key := fmt.Sprintf("credits:%s", userID.String())
+		s.rdb.Set(ctx, key, credits.Balance, 0) // No expiry - permanent cache
+		s.logger.Debug().Str("user_id", userID.String()).Int64("balance", credits.Balance).Msg("synced credits to Redis")
+	}
 
 	s.logger.Info().Str("user_id", userID.String()).Int64("amount", amount).Str("type", txType).Msg("credits added")
 	return nil

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	authinfra "github.com/Mark-0731/SwiftMail/internal/features/auth/infrastructure"
 	"github.com/emersion/go-smtp"
 	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
@@ -40,9 +41,16 @@ func (s *Session) AuthPlain(username, password string) error {
 	}
 
 	// Not in cache, validate from database
-	apiKey, err := s.backend.authRepo.GetAPIKeyByHash(ctx, keyHash)
+	apiKeyData, err := s.backend.authRepo.GetAPIKeyByHash(ctx, keyHash)
 	if err != nil {
 		s.logger.Warn().Str("username", username[:12]).Msg("SMTP authentication failed")
+		return fmt.Errorf("authentication failed")
+	}
+
+	// Type assert to get the concrete model (needed for ExpiresAt check)
+	apiKey, ok := apiKeyData.(*authinfra.APIKeyModel)
+	if !ok {
+		s.logger.Error().Msg("failed to type assert API key")
 		return fmt.Errorf("authentication failed")
 	}
 
@@ -55,9 +63,9 @@ func (s *Session) AuthPlain(username, password string) error {
 	// Update last used timestamp
 	s.backend.authRepo.UpdateAPIKeyLastUsed(ctx, apiKey.ID)
 
-	s.userID = apiKey.UserID
+	s.userID = apiKeyData.GetUserID()
 	s.authenticated = true
-	s.logger.Info().Str("user_id", apiKey.UserID.String()).Msg("SMTP authentication successful")
+	s.logger.Info().Str("user_id", s.userID.String()).Msg("SMTP authentication successful")
 	return nil
 }
 

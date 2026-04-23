@@ -68,12 +68,14 @@ func New(cfg *config.Config, db database.Querier, rdb *redis.Client, asynqClient
 
 	// ─── Managers ────────────────────────────────────────────────────────
 	jwtManager := authdomain.NewJWTManager(cfg.JWT.AccessSecret, cfg.JWT.RefreshSecret, cfg.JWT.AccessExpiry, cfg.JWT.RefreshExpiry)
-	apiKeyManager := authdomain.NewAPIKeyManager(rdb)
 	totpManager := authdomain.NewTOTPManager()
 	rateLimiter := ratelimit.NewTokenBucket(rdb)
 
 	// ─── Repositories ────────────────────────────────────────────────────
 	authRepo := authinfra.NewPostgresRepository(db)
+
+	// API Key Manager needs repository for database fallback
+	apiKeyManager := authdomain.NewAPIKeyManager(rdb, authRepo)
 	domainRepo := domainmgmtinfra.NewPostgresRepository(db)
 	templateRepo := tmplinfra.NewPostgresRepository(db)
 	emailRepo := emailinfra.NewPostgresEmailRepository(db)
@@ -97,7 +99,7 @@ func New(cfg *config.Config, db database.Querier, rdb *redis.Client, asynqClient
 	templateService := tmplapp.NewService(templateRepo, logger)
 
 	// Billing services
-	creditService := billingapp.NewCreditService(cacheAdapter, logger)
+	creditService := billingapp.NewCreditService(cacheAdapter, db, logger)
 	stripeService := billinginfra.NewStripeService(
 		cfg.Stripe.SecretKey,
 		cfg.Stripe.PublishableKey,

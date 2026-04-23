@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	authdomain "github.com/Mark-0731/SwiftMail/internal/features/auth/domain"
 	"github.com/Mark-0731/SwiftMail/pkg/database"
 	"github.com/google/uuid"
 )
@@ -18,7 +19,7 @@ type Repository interface {
 	DisableTOTP(ctx context.Context, userID uuid.UUID) error
 	CreateAPIKey(ctx context.Context, userID uuid.UUID, name, keyHash, keyPrefix string, permissions []string, expiresAt *time.Time) (*APIKeyModel, error)
 	GetAPIKeysByUser(ctx context.Context, userID uuid.UUID) ([]APIKeyModel, error)
-	GetAPIKeyByHash(ctx context.Context, keyHash string) (*APIKeyModel, error)
+	GetAPIKeyByHash(ctx context.Context, keyHash string) (authdomain.APIKeyData, error)
 	DeleteAPIKey(ctx context.Context, id, userID uuid.UUID) error
 	UpdateAPIKeyLastUsed(ctx context.Context, id uuid.UUID) error
 
@@ -66,6 +67,28 @@ type APIKeyModel struct {
 	LastUsedAt  *time.Time `json:"last_used_at"`
 	ExpiresAt   *time.Time `json:"expires_at"`
 	CreatedAt   time.Time  `json:"created_at"`
+	UserRole    string     `json:"-"` // User's role
+	UserStatus  string     `json:"-"` // User's status
+}
+
+// GetUserID returns the user ID (implements domain.APIKeyData interface).
+func (m *APIKeyModel) GetUserID() uuid.UUID {
+	return m.UserID
+}
+
+// GetPermissions returns the permissions (implements domain.APIKeyData interface).
+func (m *APIKeyModel) GetPermissions() []string {
+	return m.Permissions
+}
+
+// GetUserRole returns the user role (implements domain.APIKeyData interface).
+func (m *APIKeyModel) GetUserRole() string {
+	return m.UserRole
+}
+
+// GetUserStatus returns the user status (implements domain.APIKeyData interface).
+func (m *APIKeyModel) GetUserStatus() string {
+	return m.UserStatus
 }
 
 // PostgresRepository implements Repository with PostgreSQL.
@@ -192,17 +215,17 @@ func (r *PostgresRepository) GetAPIKeysByUser(ctx context.Context, userID uuid.U
 	return keys, nil
 }
 
-func (r *PostgresRepository) GetAPIKeyByHash(ctx context.Context, keyHash string) (*APIKeyModel, error) {
+func (r *PostgresRepository) GetAPIKeyByHash(ctx context.Context, keyHash string) (authdomain.APIKeyData, error) {
 	key := &APIKeyModel{}
 	err := r.db.QueryRow(ctx,
-		`SELECT ak.id, ak.user_id, ak.name, ak.key_hash, ak.key_prefix, ak.last_used_at, ak.expires_at, ak.created_at
+		`SELECT ak.id, ak.user_id, ak.name, ak.key_hash, ak.key_prefix, ak.permissions, ak.last_used_at, ak.expires_at, ak.created_at, u.role, u.status
 		 FROM api_keys ak
 		 JOIN users u ON ak.user_id = u.id
 		 WHERE ak.key_hash = $1`,
 		keyHash,
 	).Scan(
-		&key.ID, &key.UserID, &key.Name, &key.KeyHash, &key.KeyPrefix,
-		&key.LastUsedAt, &key.ExpiresAt, &key.CreatedAt,
+		&key.ID, &key.UserID, &key.Name, &key.KeyHash, &key.KeyPrefix, &key.Permissions,
+		&key.LastUsedAt, &key.ExpiresAt, &key.CreatedAt, &key.UserRole, &key.UserStatus,
 	)
 	if err != nil {
 		return nil, err
