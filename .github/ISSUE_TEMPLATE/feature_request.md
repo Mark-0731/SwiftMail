@@ -1,9 +1,10 @@
 ---
 name: Feature Request
 about: Suggest a new feature for SwiftMail
-title: '[FEATURE] '
+title: "[FEATURE] "
 labels: enhancement
 assignees: ''
+
 ---
 
 ## Feature Description
