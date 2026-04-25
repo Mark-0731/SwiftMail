@@ -10,6 +10,8 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/Mark-0731/SwiftMail/internal/config"
+	"github.com/Mark-0731/SwiftMail/internal/features/analytics"
+	analyticsapp "github.com/Mark-0731/SwiftMail/internal/features/analytics/application"
 	emailtypes "github.com/Mark-0731/SwiftMail/internal/features/email"
 	emailinfra "github.com/Mark-0731/SwiftMail/internal/features/email/infrastructure"
 	"github.com/Mark-0731/SwiftMail/internal/platform/provider"
@@ -22,14 +24,15 @@ import (
 
 // SendHandler processes email:send tasks with advanced resilience features
 type SendHandler struct {
-	emailRepo emailinfra.EmailRepository
-	provider  provider.Provider
-	eventBus  events.Bus
-	metrics   *metrics.Metrics
-	logger    zerolog.Logger
-	config    *config.Config
-	dlq       *queue.DeadLetterQueue
-	rdb       *redis.Client
+	emailRepo        emailinfra.EmailRepository
+	provider         provider.Provider
+	eventBus         events.Bus
+	metrics          *metrics.Metrics
+	logger           zerolog.Logger
+	config           *config.Config
+	dlq              *queue.DeadLetterQueue
+	rdb              *redis.Client
+	analyticsService *analyticsapp.Service
 
 	// Resilience components
 	circuitBreaker *resilience.CircuitBreakerManager
@@ -52,20 +55,22 @@ func NewSendHandler(
 	adaptiveRetry *resilience.AdaptiveRetryEngine,
 	poisonQueue *resilience.PoisonQueue,
 	backpressure *resilience.BackpressureController,
+	analyticsService *analyticsapp.Service,
 ) *SendHandler {
 	return &SendHandler{
-		emailRepo:      emailRepo,
-		provider:       provider,
-		eventBus:       eventBus,
-		metrics:        m,
-		config:         cfg,
-		logger:         logger,
-		dlq:            dlq,
-		rdb:            rdb,
-		circuitBreaker: circuitBreaker,
-		adaptiveRetry:  adaptiveRetry,
-		poisonQueue:    poisonQueue,
-		backpressure:   backpressure,
+		emailRepo:        emailRepo,
+		provider:         provider,
+		eventBus:         eventBus,
+		metrics:          m,
+		config:           cfg,
+		logger:           logger,
+		dlq:              dlq,
+		rdb:              rdb,
+		circuitBreaker:   circuitBreaker,
+		adaptiveRetry:    adaptiveRetry,
+		poisonQueue:      poisonQueue,
+		backpressure:     backpressure,
+		analyticsService: analyticsService,
 	}
 }
 
@@ -321,6 +326,18 @@ func (h *SendHandler) handleSendSuccess(
 	}
 
 	h.metrics.EmailsSentTotal.WithLabelValues("sent", domain, "").Inc()
+
+	// Track "delivered" event in analytics
+	if h.analyticsService != nil {
+		h.analyticsService.TrackEvent(analytics.Event{
+			UserID:    payload.UserID,
+			EmailID:   payload.EmailLogID,
+			EventType: "delivered",
+			Recipient: payload.To,
+			Timestamp: time.Now().UTC(),
+		})
+		log.Debug().Msg("tracked delivered event")
+	}
 
 	// Publish success event
 	event := events.EmailSentEvent(payload.EmailLogID, payload.UserID, payload.To)

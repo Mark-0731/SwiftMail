@@ -131,7 +131,7 @@ func main() {
 	}()
 
 	// Create Fiber server
-	app := server.New(cfg, dbPool.GetPrimary(), rdb, asynqClient, m, log)
+	app := server.New(cfg, dbPool.GetPrimary(), rdb, asynqClient, m, chConn, log)
 
 	// Graceful shutdown
 	quit := make(chan os.Signal, 1)

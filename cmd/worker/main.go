@@ -2,16 +2,19 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 
 	"github.com/Mark-0731/SwiftMail/internal/config"
+	analyticsapp "github.com/Mark-0731/SwiftMail/internal/features/analytics/application"
 	emailrepo "github.com/Mark-0731/SwiftMail/internal/features/email/infrastructure"
 	"github.com/Mark-0731/SwiftMail/internal/platform/provider"
 	"github.com/Mark-0731/SwiftMail/internal/platform/queue"
@@ -50,6 +53,42 @@ func main() {
 	})
 	defer rdb.Close()
 	log.Info().Msg("connected to Redis")
+
+	// Connect to ClickHouse for analytics
+	chConn, err := clickhouse.Open(&clickhouse.Options{
+		Addr: []string{fmt.Sprintf("%s:%s", cfg.ClickHouse.Host, cfg.ClickHouse.Port)},
+		Auth: clickhouse.Auth{
+			Database: cfg.ClickHouse.Database,
+			Username: cfg.ClickHouse.User,
+			Password: cfg.ClickHouse.Password,
+		},
+		Settings: clickhouse.Settings{
+			"max_execution_time": 60,
+		},
+		DialTimeout: 5 * time.Second,
+		Compression: &clickhouse.Compression{
+			Method: clickhouse.CompressionLZ4,
+		},
+	})
+	if err != nil {
+		log.Warn().Err(err).Msg("failed to connect to ClickHouse (analytics will be disabled)")
+	} else {
+		if err := chConn.Ping(ctx); err != nil {
+			log.Warn().Err(err).Msg("failed to ping ClickHouse")
+		} else {
+			log.Info().Msg("connected to ClickHouse")
+		}
+		defer chConn.Close()
+	}
+
+	// Initialize analytics service
+	var analyticsService *analyticsapp.Service
+	if chConn != nil {
+		analyticsService = analyticsapp.NewService(chConn, log)
+		log.Info().Msg("analytics service enabled in worker")
+	} else {
+		log.Warn().Msg("analytics service disabled (ClickHouse not available)")
+	}
 
 	// Initialize metrics
 	m := metrics.NewMetrics()
@@ -134,9 +173,10 @@ func main() {
 		adaptiveRetryEngine,
 		poisonQueue,
 		backpressureController,
+		analyticsService,
 	)
-	trackHandler := worker.NewTrackHandler(emailRepo, log)
-	bounceHandler := worker.NewBounceHandler(emailRepo, log)
+	trackHandler := worker.NewTrackHandler(emailRepo, analyticsService, log)
+	bounceHandler := worker.NewBounceHandler(emailRepo, analyticsService, log)
 
 	// Create Asynq server
 	srv := worker.NewServer(cfg, log)

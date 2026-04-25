@@ -2,7 +2,11 @@ package application
 
 import (
 	"context"
+	"strings"
+	"time"
 
+	"github.com/Mark-0731/SwiftMail/internal/features/analytics"
+	analyticsapp "github.com/Mark-0731/SwiftMail/internal/features/analytics/application"
 	billingapp "github.com/Mark-0731/SwiftMail/internal/features/billing/application"
 	emailtypes "github.com/Mark-0731/SwiftMail/internal/features/email"
 	"github.com/Mark-0731/SwiftMail/internal/features/email/application/pipeline"
@@ -20,9 +24,10 @@ import (
 // Orchestrator coordinates email sending through the pipeline.
 // This is the single entry point for all email operations.
 type Orchestrator struct {
-	pipeline pipeline.Pipeline
-	repo     infrastructure.EmailRepository
-	logger   zerolog.Logger
+	pipeline         pipeline.Pipeline
+	repo             infrastructure.EmailRepository
+	analyticsService *analyticsapp.Service
+	logger           zerolog.Logger
 }
 
 // NewOrchestrator creates a new email orchestrator with dependency injection.
@@ -33,6 +38,7 @@ func NewOrchestrator(
 	queue queue.Queue,
 	rdb *redis.Client,
 	creditService *billingapp.CreditService,
+	analyticsService *analyticsapp.Service,
 	logger zerolog.Logger,
 ) *Orchestrator {
 	// Create event bus
@@ -58,9 +64,10 @@ func NewOrchestrator(
 	emailPipeline := pipeline.NewEmailSendPipeline(steps)
 
 	return &Orchestrator{
-		pipeline: emailPipeline,
-		repo:     repo,
-		logger:   logger,
+		pipeline:         emailPipeline,
+		repo:             repo,
+		analyticsService: analyticsService,
+		logger:           logger,
 	}
 }
 
@@ -123,6 +130,28 @@ func (o *Orchestrator) Send(ctx context.Context, userID uuid.UUID, req *emailtyp
 	result, err := o.pipeline.Execute(ctx, emailCtx)
 	if err != nil {
 		return nil, err
+	}
+
+	// Track "sent" event in analytics
+	if o.analyticsService != nil {
+		// Extract domain from recipient email
+		recipientDomain := ""
+		if atIndex := strings.LastIndex(req.To, "@"); atIndex != -1 {
+			recipientDomain = req.To[atIndex+1:]
+		}
+
+		o.analyticsService.TrackEvent(analytics.Event{
+			UserID:    userID,
+			EmailID:   result.EmailID,
+			EventType: "sent",
+			Recipient: req.To,
+			Timestamp: time.Now().UTC(),
+		})
+		o.logger.Debug().
+			Str("email_id", result.EmailID.String()).
+			Str("recipient", req.To).
+			Str("domain", recipientDomain).
+			Msg("tracked sent event")
 	}
 
 	// Return response

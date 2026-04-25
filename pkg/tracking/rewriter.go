@@ -41,7 +41,7 @@ func RewriteLinks(html string, emailLogID string, baseURL string) string {
 // InjectPixel adds the open tracking pixel before the closing </body> tag.
 func InjectPixel(html string, emailLogID string, baseURL string) string {
 	pixelTag := fmt.Sprintf(
-		`<img src="%s/t/o/%s.png" width="1" height="1" style="display:none" alt="" />`,
+		`<img src="%s/t/o/%s" width="1" height="1" style="display:none" alt="" />`,
 		strings.TrimRight(baseURL, "/"),
 		emailLogID,
 	)

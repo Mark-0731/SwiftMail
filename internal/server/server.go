@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/hibiken/asynq"
@@ -13,6 +14,7 @@ import (
 	adminapp "github.com/Mark-0731/SwiftMail/internal/features/admin/application"
 	admininfra "github.com/Mark-0731/SwiftMail/internal/features/admin/infrastructure"
 	adminhttp "github.com/Mark-0731/SwiftMail/internal/features/admin/transport/http"
+	analyticsapp "github.com/Mark-0731/SwiftMail/internal/features/analytics/application"
 	authapp "github.com/Mark-0731/SwiftMail/internal/features/auth/application"
 	authdomain "github.com/Mark-0731/SwiftMail/internal/features/auth/domain"
 	authinfra "github.com/Mark-0731/SwiftMail/internal/features/auth/infrastructure"
@@ -51,7 +53,7 @@ import (
 )
 
 // New creates and configures the Fiber application with all routes.
-func New(cfg *config.Config, db database.Querier, rdb *redis.Client, asynqClient *asynq.Client, m *metrics.Metrics, logger zerolog.Logger) *fiber.App {
+func New(cfg *config.Config, db database.Querier, rdb *redis.Client, asynqClient *asynq.Client, m *metrics.Metrics, chConn clickhouse.Conn, logger zerolog.Logger) *fiber.App {
 	app := fiber.New(fiber.Config{
 		AppName:               "SwiftMail API",
 		ReadTimeout:           cfg.Server.ReadTimeout,
@@ -89,6 +91,15 @@ func New(cfg *config.Config, db database.Querier, rdb *redis.Client, asynqClient
 	queueAdapter := queue.NewAsynqQueue(asynqClient, logger)
 
 	// ─── Services ────────────────────────────────────────────────────────
+	// Analytics service (ClickHouse)
+	var analyticsService *analyticsapp.Service
+	if chConn != nil {
+		analyticsService = analyticsapp.NewService(chConn, logger)
+		logger.Info().Msg("analytics service enabled")
+	} else {
+		logger.Warn().Msg("analytics service disabled (ClickHouse not available)")
+	}
+
 	// Verification service (independent)
 	verificationService := verificationapp.NewService(verificationRepo, queueAdapter, rdb, logger)
 
@@ -107,8 +118,8 @@ func New(cfg *config.Config, db database.Querier, rdb *redis.Client, asynqClient
 	)
 	billingService := billingapp.NewService(db, rdb, stripeService, logger)
 
-	// Email orchestrator
-	emailOrchestrator := emailapp.NewOrchestrator(emailRepo, templateService, cacheAdapter, queueAdapter, rdb, creditService, logger)
+	// Email orchestrator (with analytics)
+	emailOrchestrator := emailapp.NewOrchestrator(emailRepo, templateService, cacheAdapter, queueAdapter, rdb, creditService, analyticsService, logger)
 
 	suppressionService := suppressionapp.NewService(suppressionRepo, rdb, logger)
 	webhookDispatcher := webhookapp.NewDispatcher(webhookRepo, logger)
